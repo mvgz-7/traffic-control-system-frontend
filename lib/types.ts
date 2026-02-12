@@ -1,22 +1,128 @@
-export interface SystemStatus {
-  cameraActive: boolean
-  detectionActive: boolean
+// Type definitions for the traffic management system
+
+export type TrafficLightState = "GREEN" | "YELLOW" | "ALL_RED"
+
+export interface VACStatus {
+  phase: string
+  phase_name: string
+  state: TrafficLightState
+  elapsed: number
+  gap: number
+  min_green: number
+  max_green: number
+  max_gap: number
+  active_lanes: string[]
+  decision?: {
+    action: string
+    reason: string
+  }
+}
+
+export interface SignalDisplay {
+  signals: Record<string, TrafficLightState>
+}
+
+export interface ProcessingStatus {
+  state: string
+  uptime_seconds?: number
+  active_cameras: string[]
+  error?: string
+}
+
+export interface ControlResponse {
+  success: boolean
+  state: string
+  message: string
+}
+
+export interface IntersectionSummary {
+  id: string
+  name: string
+  status: string
+  phase_count: number
+  processing_state: string
+}
+
+export interface IntersectionConfig {
+  max_gap: number
+  min_green: number
+  max_green: number
+  yellow_time: number
+  all_red_time: number
+}
+
+export interface CameraHealth {
+  status: "healthy" | "unhealthy"
+  fps?: number
+  last_frame?: number
+  resolution?: [number, number]
+}
+
+export interface CameraHealthResponse {
+  [key: string]: CameraHealth
+}
+
+export interface Detection {
+  class_id: number
+  class_name: string
+  confidence: number
+  bbox: [number, number, number, number]
+  lane_id?: string
+}
+
+export interface VideoFrameMessage {
+  type: "frame"
+  frame: string
+  vac_status: VACStatus
+  lane_counts: Record<string, number>
   fps: number
-  uptime: number
-  lastUpdate: Date | null
+  camera_health: CameraHealthResponse
 }
 
-export interface PerformanceMetrics {
-  avgDetectionTime: number
-  accuracy: number
-  vehiclesPerMinute: number
-  peakHour: string
-  totalVehiclesToday: number
+export interface StatusMessage {
+  type: "status"
+  vac_status: VACStatus
+  camera_health: CameraHealthResponse
+  signal_display: Record<string, TrafficLightState>
 }
 
-export interface VehicleClassification {
-  car: number
-  motorcycle: number
-  bus: number
-  truck: number
+export interface HealthResponse {
+  status: "healthy" | "unhealthy"
+  version: string
+  components: Record<string, string>
+}
+
+export interface AppSettings {
+  debug: boolean
+  log_level: string
+  model_path: string
+  confidence_threshold: number
+  video_source: string
+}
+
+export interface CameraDevice {
+  id: string
+  name: string
+  device_path?: string
+  type: "camera" | "rtsp" | "file"
+}
+
+export interface UploadedVideo {
+  id: string
+  filename: string
+  file_path: string
+  size_bytes: number
+  duration_seconds?: number
+  uploaded_at: string
+}
+
+export interface VideoSourcesResponse {
+  cameras: CameraDevice[]
+  uploads: UploadedVideo[]
+}
+
+export interface SourceAssignmentResponse {
+  message: string
+  assigned_to: string
+  source_id: string
 }

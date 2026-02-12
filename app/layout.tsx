@@ -9,9 +9,13 @@ const _geist = Geist({ subsets: ["latin"] })
 const _geistMono = Geist_Mono({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Traffic Control System",
+  title: "Traffic Control System - Dynamic Traffic Light Management",
   description: "Vehicle counting and dynamic traffic light system for improved traffic flow using YOLO detection",
   generator: "v0.app",
+}
+
+export const viewport: Viewport = {
+  themeColor: "#1a1625",
 }
 
 export default function RootLayout({
@@ -21,11 +25,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-        <body className={`font-sans antialiased`}>
-          {children}
-          <Toaster position="top-right" />
-          <Analytics />
-        </body>
+      <body className={`font-sans antialiased`}>
+        {children}
+        <Toaster position="top-right" />
+        <Analytics />
+      </body>
     </html>
   )
 }

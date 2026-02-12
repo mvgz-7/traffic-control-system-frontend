@@ -9,7 +9,7 @@ const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Analytics", href: "/analytics", icon: BarChart3 },
   { name: "Traffic Control", href: "/traffic-control", icon: TrafficCone },
-  { name: "System Monitor", href: "/system-monitor", icon: Monitor },
+  { name: "System Monitor", href: "/system", icon: Monitor },
   { name: "Notifications", href: "/notifications", icon: Bell },
   { name: "Settings", href: "/settings", icon: Settings },
 ]

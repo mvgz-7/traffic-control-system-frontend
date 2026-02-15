@@ -31,7 +31,7 @@ export default function AnalyticsPage() {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <main className="pl-64">
+      <main className="pl-72">
         <Header
           title="Traffic Analytics"
           subtitle="Real-time traffic signal performance metrics and analytics"
@@ -63,125 +63,142 @@ export default function AnalyticsPage() {
 
           {selectedId && vacStatus && (
             <>
-              {/* Performance Metrics */}
-              <div className="grid gap-4 md:grid-cols-3">
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Current Phase</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-2xl font-bold">{vacStatus.phase_name}</p>
-                    <p className="text-xs text-muted-foreground mt-1">{vacStatus.phase}</p>
-                  </CardContent>
-                </Card>
+              {/* Two-column layout: left = VAC Status + Active Lanes, right = Green Utilization + Decision + Min/Max info */}
+              <div className="grid gap-6 md:grid-cols-2">
+                {/* Left column */}
+                <div className="space-y-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>VAC Status</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid gap-3 md:grid-cols-2 items-start">
+                        <div className="flex items-center gap-4">
+                          {(() => {
+                            const stateUpper = vacStatus.state ? vacStatus.state.toString().toUpperCase() : ""
+                            const redOn = stateUpper === "ALL_RED" || stateUpper === "RED"
+                            const yellowOn = stateUpper === "YELLOW"
+                            const greenOn = stateUpper === "GREEN"
+                            return (
+                              <div className="w-14 p-2 bg-black rounded-md flex flex-col items-center gap-2">
+                                <div
+                                  className={`w-8 h-8 rounded-full ${redOn ? "bg-red-500 ring-4 ring-red-400" : "bg-gray-700"}`}
+                                  style={{ boxShadow: redOn ? "0 0 10px rgba(239,68,68,0.6)" : undefined }}
+                                />
+                                <div
+                                  className={`w-8 h-8 rounded-full ${yellowOn ? "bg-yellow-400 ring-4 ring-yellow-300" : "bg-gray-700"}`}
+                                  style={{ boxShadow: yellowOn ? "0 0 10px rgba(234,179,8,0.45)" : undefined }}
+                                />
+                                <div
+                                  className={`w-8 h-8 rounded-full ${greenOn ? "bg-green-500 ring-4 ring-green-300" : "bg-gray-700"}`}
+                                  style={{ boxShadow: greenOn ? "0 0 10px rgba(34,197,94,0.45)" : undefined }}
+                                />
+                              </div>
+                            )
+                          })()}
 
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Signal State</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center gap-2">
-                      <div
-                        className={`w-4 h-4 rounded-full ${
-                          vacStatus.state === "GREEN"
-                            ? "bg-green-500"
-                            : vacStatus.state === "YELLOW"
-                              ? "bg-yellow-500"
-                              : "bg-red-500"
-                        }`}
-                      />
-                      <p className="text-2xl font-bold">{vacStatus.state}</p>
-                    </div>
-                  </CardContent>
-                </Card>
+                          <div className="space-y-2">
+                            <div>
+                              <p className="text-sm text-muted-foreground">Phase</p>
+                              <p className="text-lg font-semibold">{vacStatus.phase_name}</p>
+                            </div>
+                            <div>
+                              <p className="text-sm text-muted-foreground">State</p>
+                              <p className="text-lg font-semibold">{vacStatus.state}</p>
+                            </div>
+                          </div>
+                        </div>
 
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm font-medium">Green Time Utilization</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="w-full bg-muted rounded-full h-2">
-                      <div
-                        className="bg-green-500 h-2 rounded-full transition-all duration-300"
-                        style={{
-                          width: `${Math.min((vacStatus.elapsed / vacStatus.max_green) * 100, 100)}%`,
-                        }}
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      {vacStatus.elapsed.toFixed(1)}s / {vacStatus.max_green.toFixed(1)}s
-                    </p>
-                  </CardContent>
-                </Card>
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between p-3 bg-muted rounded">
+                            <span className="text-sm">Elapsed</span>
+                            <span className="font-semibold">{vacStatus.elapsed.toFixed(1)}s</span>
+                          </div>
+                          <div className="flex items-center justify-between p-3 bg-muted rounded">
+                            <span className="text-sm">Gap</span>
+                            <span className="font-semibold">{vacStatus.gap.toFixed(2)}s</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t">
+                        <p className="text-sm text-muted-foreground mb-2">Active Lanes</p>
+                        <div className="flex flex-wrap gap-2">
+                          {vacStatus.active_lanes && vacStatus.active_lanes.length > 0 ? (
+                            vacStatus.active_lanes.map((lane) => (
+                              <Badge key={lane} variant="default">
+                                {lane}
+                              </Badge>
+                            ))
+                          ) : (
+                            <p className="text-xs text-muted-foreground">No active lanes</p>
+                          )}
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Right column */}
+                <div className="space-y-6">
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Green Time Utilization</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="w-full bg-muted rounded-full h-2">
+                        <div
+                          className="bg-green-500 h-2 rounded-full transition-all duration-300"
+                          style={{
+                            width: `${Math.min((vacStatus.elapsed / vacStatus.max_green) * 100, 100)}%`,
+                          }}
+                        />
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        {vacStatus.elapsed.toFixed(1)}s / {vacStatus.max_green.toFixed(1)}s
+                      </p>
+                    </CardContent>
+                  </Card>
+
+                  {vacStatus.decision && (
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Current Algorithm Decision</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="bg-muted p-4 rounded-lg space-y-2">
+                          <div>
+                            <p className="text-xs text-muted-foreground">Action</p>
+                            <p className="text-lg font-semibold">{vacStatus.decision.action}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-muted-foreground">Reason</p>
+                            <p className="text-sm">{vacStatus.decision.reason}</p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  <Card>
+                    <CardHeader>
+                      <CardTitle>Timing Info</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">Min Green Time</p>
+                          <p className="text-lg font-semibold">{vacStatus.min_green.toFixed(1)}s</p>
+                        </div>
+                        <div className="space-y-1">
+                          <p className="text-sm text-muted-foreground">Max Green Time</p>
+                          <p className="text-lg font-semibold">{vacStatus.max_green.toFixed(1)}s</p>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
               </div>
-
-              {/* Detailed Status */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Detailed Status Information</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <p className="text-sm text-muted-foreground">Elapsed Time</p>
-                      <p className="text-3xl font-bold">{vacStatus.elapsed.toFixed(2)}</p>
-                      <p className="text-xs text-muted-foreground">seconds</p>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-sm text-muted-foreground">Gap Since Last Vehicle</p>
-                      <p className="text-3xl font-bold">{vacStatus.gap.toFixed(2)}</p>
-                      <p className="text-xs text-muted-foreground">seconds</p>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-sm text-muted-foreground">Min Green Time</p>
-                      <p className="text-3xl font-bold">{vacStatus.min_green.toFixed(1)}</p>
-                      <p className="text-xs text-muted-foreground">seconds</p>
-                    </div>
-                    <div className="space-y-2">
-                      <p className="text-sm text-muted-foreground">Max Green Time</p>
-                      <p className="text-3xl font-bold">{vacStatus.max_green.toFixed(1)}</p>
-                      <p className="text-xs text-muted-foreground">seconds</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Active Lanes */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Active Lanes</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex flex-wrap gap-2">
-                    {vacStatus.active_lanes.map((lane) => (
-                      <Badge key={lane} variant="default">
-                        {lane}
-                      </Badge>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-
-              {/* Decision Log */}
-              {vacStatus.decision && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Current Algorithm Decision</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="bg-muted p-4 rounded-lg space-y-2">
-                      <div>
-                        <p className="text-xs text-muted-foreground">Action</p>
-                        <p className="text-lg font-semibold">{vacStatus.decision.action}</p>
-                      </div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">Reason</p>
-                        <p className="text-sm">{vacStatus.decision.reason}</p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
             </>
           )}
         </div>

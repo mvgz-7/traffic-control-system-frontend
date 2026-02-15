@@ -21,7 +21,7 @@ const API_V1 = `${API_BASE_URL}/api/v1`
 // ===== System Endpoints =====
 
 export async function getHealth(): Promise<HealthResponse> {
-  const response = await fetch(`${API_V1}/system/health`)
+  const response = await fetch(`${API_V1}/health/status`)
   if (!response.ok) throw new Error("Failed to fetch health")
   return response.json()
 }

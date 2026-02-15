@@ -18,6 +18,13 @@ export default function SettingsPage() {
   const [apiUrl, setApiUrl] = useState(process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000")
   const [isSaving, setIsSaving] = useState(false)
 
+  const formatUptime = (seconds: number) => {
+    const hrs = Math.floor(seconds / 3600)
+    const mins = Math.floor((seconds % 3600) / 60)
+    const secs = seconds % 60
+    return `${hrs.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
+  }
+
   const { data: settings } = useSWR<AppSettings>("settings", getSettings, {
     refreshInterval: 10000,
   })
@@ -41,12 +48,12 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <main className="pl-64">
+      <main className="pl-72">
         <Header
           title="Settings"
           subtitle="System configuration and preferences"
         />
-        <div className="space-y-6 p-6 max-w-2xl">
+        <div className="space-y-6 p-6">
           {/* System Status */}
           <Card>
             <CardHeader>
@@ -60,15 +67,23 @@ export default function SettingsPage() {
                 <div className="space-y-2">
                   <p className="text-sm text-muted-foreground">API Server</p>
                   <div className="flex items-center gap-2">
-                    <div className={`w-3 h-3 rounded-full ${health?.status === "healthy" ? "bg-green-500" : "bg-red-500"}`} />
-                    <Badge variant={health?.status === "healthy" ? "default" : "destructive"}>
-                      {health?.status || "Unknown"}
-                    </Badge>
+                    {(() => {
+                      const statusUpper = String(health?.status ?? "").toUpperCase()
+                      const isHealthy = statusUpper === "HEALTHY"
+                      return (
+                        <>
+                          <div className={`w-3 h-3 rounded-full ${isHealthy ? "bg-green-500" : "bg-red-500"}`} />
+                          <Badge variant={isHealthy ? "default" : "destructive"}>{health?.status ?? "Unknown"}</Badge>
+                        </>
+                      )
+                    })()}
                   </div>
                 </div>
                 <div className="space-y-2">
-                  <p className="text-sm text-muted-foreground">Version</p>
-                  <p className="font-semibold text-sm">{health?.version || "Unknown"}</p>
+                  <p className="text-sm text-muted-foreground">System Uptime</p>
+                  <p className="font-semibold text-sm">
+                    {typeof health?.uptime === "number" ? formatUptime(Math.floor(health.uptime)) : "Unknown"}
+                  </p>
                 </div>
               </div>
 
@@ -79,9 +94,7 @@ export default function SettingsPage() {
                     {Object.entries(health.components).map(([component, status]) => (
                       <div key={component} className="flex items-center justify-between p-2 bg-muted rounded">
                         <p className="text-sm capitalize">{component}</p>
-                        <Badge variant={status === "running" || status === "ready" ? "default" : "secondary"}>
-                          {status}
-                        </Badge>
+                        <Badge variant={String(status).toUpperCase() === "HEALTHY" ? "default" : "secondary"}>{status}</Badge>
                       </div>
                     ))}
                   </div>

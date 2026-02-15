@@ -61,7 +61,7 @@ export default function NotificationsPage() {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <main className="pl-64">
+      <main className="pl-72">
         <Header
           title="Notifications"
           subtitle="Traffic alerts and system events"

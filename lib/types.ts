@@ -87,9 +87,11 @@ export interface StatusMessage {
 }
 
 export interface HealthResponse {
-  status: "healthy" | "unhealthy"
-  version: string
+  status: string
+  uptime: number
+  timestamp: number
   components: Record<string, string>
+  metrics: Record<string, number>
 }
 
 export interface AppSettings {

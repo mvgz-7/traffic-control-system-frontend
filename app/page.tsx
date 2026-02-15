@@ -13,6 +13,8 @@ import { listIntersections } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Spinner } from "@/components/ui/spinner"
 import type { IntersectionSummary } from "@/lib/types"
+import { CameraSourceManager } from "@/components/dashboard/camera-source-manager"
+import { VehicleSummary } from "@/components/dashboard/vehicle-summary"
 
 export default function DashboardPage() {
   const [selectedIntersection, setSelectedIntersection] = useState<string>("")
@@ -46,7 +48,7 @@ export default function DashboardPage() {
     return (
       <div className="min-h-screen bg-background">
         <Sidebar />
-        <main className="pl-64">
+        <main className="pl-72">
           <Header
             title="Traffic Dashboard"
             subtitle="Real-time vehicle detection and dynamic traffic light control"
@@ -66,7 +68,7 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <main className="pl-64">
+      <main className="pl-72">
         <Header
           title="Traffic Dashboard"
           subtitle="Real-time vehicle detection and dynamic traffic light control"
@@ -82,18 +84,24 @@ export default function DashboardPage() {
           {/* Main Dashboard Content */}
           {selectedIntersection && (
             <>
-              {/* VAC Status and Camera Health */}
-              <div className="grid gap-6 lg:grid-cols-2">
-                <VACStatusDisplay intersectionId={selectedIntersection} />
-                <CameraHealthCard intersectionId={selectedIntersection} />
-              </div>
-
-              {/* Video Feed and Lane Counts */}
-              <div className="grid gap-6 lg:grid-cols-3">
+              {/* Video Feed */}
+              <div className="gap-6">
                 <div className="lg:col-span-2">
                   <VideoFeedWebSocket intersectionId={selectedIntersection} />
                 </div>
-                <LaneCountsCard intersectionId={selectedIntersection} />
+              </div>
+
+              {/* Three-column under CCTV Feed */}
+              <div className="grid gap-6 lg:grid-cols-3 items-stretch">
+                <div className="h-full">
+                  <CameraSourceManager intersectionId={selectedIntersection} />
+                </div>
+                <div className="h-full">
+                  <VACStatusDisplay intersectionId={selectedIntersection} />
+                </div>
+                <div className="h-full">
+                  <VehicleSummary />
+                </div>
               </div>
             </>
           )}

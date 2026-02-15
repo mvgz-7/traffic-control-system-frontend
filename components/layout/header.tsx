@@ -13,10 +13,10 @@ interface HeaderProps {
 
 export function Header({ title, subtitle, onRefresh, isRefreshing }: HeaderProps) {
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-background/95 px-6 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div>
-        <h1 className="text-xl font-semibold text-foreground">{title}</h1>
-        {subtitle && <p className="text-sm text-muted-foreground">{subtitle}</p>}
+    <header className="sticky top-0 z-30 flex h-[80px] items-center justify-between border-b border-border bg-background/95 px-6 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="space-y-1">
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">{title}</h1>
+        {subtitle && <p className="text-sm text-muted-foreground leading-snug">{subtitle}</p>}
       </div>
 
       <div className="flex items-center gap-3">

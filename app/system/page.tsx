@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { Cpu, Camera, CheckCircle, XCircle, Wifi, Database, Clock, Play, Square } from "lucide-react"
+import { Cpu, HardDrive, MemoryStick, Timer, CheckCircle, XCircle, Play, Square } from "lucide-react"
 import { CameraSourceManager } from "@/components/dashboard/camera-source-manager"
 import {
   listIntersections,
@@ -31,7 +31,6 @@ interface SystemLog {
 export default function SystemMonitorPage() {
   const [selectedIntersectionId, setSelectedIntersectionId] = useState("")
   const [logs, setLogs] = useState<SystemLog[]>([])
-  const [startTime] = useState(new Date())
   const [isProcessingUpdating, setIsProcessingUpdating] = useState(false)
 
   const { data: intersections } = useSWR<IntersectionSummary[]>("intersections", listIntersections, {
@@ -97,8 +96,6 @@ export default function SystemMonitorPage() {
     }
   }
 
-  // Calculate uptime
-  const uptime = Math.floor((Date.now() - startTime.getTime()) / 1000)
   const formatUptime = (seconds: number) => {
     const hrs = Math.floor(seconds / 3600)
     const mins = Math.floor((seconds % 3600) / 60)
@@ -106,38 +103,42 @@ export default function SystemMonitorPage() {
     return `${hrs.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
   }
 
-  // System health status
-  const systemHealth = [
+  const cpu = health?.metrics?.cpu_percent
+  const ram = health?.metrics?.ram_percent
+  const disk = health?.metrics?.disk_percent
+  const serverUptime = health?.uptime
+
+  const resourceCards = [
     {
-      name: "API Server",
-      status: health?.status === "healthy" ? "online" : "offline",
-      icon: Wifi,
-      detail: health?.version || "Unknown",
-    },
-    {
-      name: "Detector",
-      status: health?.components?.detector === "ready" ? "online" : "offline",
+      name: "CPU Usage",
       icon: Cpu,
-      detail: health?.components?.detector || "Unknown",
+      value: typeof cpu === "number" ? cpu : null,
+      unit: "%",
     },
     {
-      name: "VAC Controller",
-      status: health?.components?.vac === "ready" ? "online" : "offline",
-      icon: Database,
-      detail: health?.components?.vac || "Unknown",
+      name: "RAM Usage",
+      icon: MemoryStick,
+      value: typeof ram === "number" ? ram : null,
+      unit: "%",
     },
     {
-      name: "Camera System",
-      status: processingStatus?.state === "RUNNING" ? "online" : "offline",
-      icon: Camera,
-      detail: processingStatus?.state || "Unknown",
+      name: "Disk Usage",
+      icon: HardDrive,
+      value: typeof disk === "number" ? disk : null,
+      unit: "%",
+    },
+    {
+      name: "System Uptime",
+      icon: Timer,
+      value: typeof serverUptime === "number" ? serverUptime : null,
+      unit: "time",
     },
   ]
 
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <main className="pl-64">
+      <main className="pl-72">
         <Header title="System Monitor" subtitle="System health and configuration" />
         <div className="space-y-6 p-6">
           {/* Intersection Selector */}
@@ -162,54 +163,89 @@ export default function SystemMonitorPage() {
 
           {/* System Health Overview */}
           <div className="grid gap-4 md:grid-cols-4">
-            {systemHealth.map((item) => (
+            {resourceCards.map((item) => (
               <Card key={item.name}>
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div
-                        className={`rounded-lg p-2 ${
-                          item.status === "online"
-                            ? "bg-green-500/10"
-                            : item.status === "warning"
-                              ? "bg-yellow-500/10"
-                              : "bg-red-500/10"
-                        }`}
+                        className="rounded-lg bg-muted p-2"
                       >
-                        <item.icon
-                          className={`h-5 w-5 ${
-                            item.status === "online"
-                              ? "text-green-600"
-                              : item.status === "warning"
-                                ? "text-yellow-600"
-                                : "text-red-600"
-                          }`}
-                        />
+                        <item.icon className="h-5 w-5 text-foreground" />
                       </div>
                       <div>
                         <p className="text-sm font-medium">{item.name}</p>
-                        <p className="text-xs text-muted-foreground">{item.detail}</p>
+                        {item.unit === "time" ? (
+                          <p className="text-xs text-muted-foreground">
+                            {item.value == null ? "N/A" : formatUptime(Math.floor(item.value))}
+                          </p>
+                        ) : (
+                          <p className="text-xs text-muted-foreground">
+                            {item.value == null ? "N/A" : `${item.value.toFixed(1)}${item.unit}`}
+                          </p>
+                        )}
                       </div>
                     </div>
-                    {item.status === "online" ? (
-                      <CheckCircle className="h-5 w-5 text-green-600" />
-                    ) : item.status === "warning" ? (
-                      <Clock className="h-5 w-5 text-yellow-600" />
-                    ) : (
-                      <XCircle className="h-5 w-5 text-red-600" />
-                    )}
+                    {health?.status ? (
+                      <Badge variant="outline">{String(health.status)}</Badge>
+                    ) : null}
                   </div>
+
+                  {item.unit !== "time" && item.value != null ? (
+                    <div className="mt-4">
+                      <Progress value={Math.max(0, Math.min(100, item.value))} />
+                    </div>
+                  ) : null}
                 </CardContent>
               </Card>
             ))}
           </div>
 
-          {/* Camera Source Management */}
-          {selectedIntersectionId && <CameraSourceManager intersectionId={selectedIntersectionId} />}
+          {/* Camera Source Management + Camera Health */}
+          <div className="grid gap-6 lg:grid-cols-2 items-start">
+            <div className="h-full">
+              {selectedIntersectionId && <CameraSourceManager intersectionId={selectedIntersectionId} />}
+            </div>
 
-          <div className="grid gap-6 lg:grid-cols-2">
+            <Card className="h-full">
+              <CardHeader>
+                <CardTitle>Camera Health</CardTitle>
+                <CardDescription>Connected cameras status</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {selectedIntersectionId && cameraHealth && Object.entries(cameraHealth).length > 0 ? (
+                  Object.entries(cameraHealth).map(([cameraId, cam]) => (
+                    <div key={cameraId} className="flex items-center justify-between p-2 bg-muted rounded-lg">
+                      <div className="flex items-center gap-2">
+                        {cam.status === "healthy" ? (
+                          <CheckCircle className="w-4 h-4 text-green-600" />
+                        ) : (
+                          <XCircle className="w-4 h-4 text-red-600" />
+                        )}
+                        <div>
+                          <p className="text-sm font-medium">{cameraId}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {cam.fps?.toFixed(1) || "N/A"} FPS
+                            {cam.resolution && ` • ${cam.resolution[0]}x${cam.resolution[1]}`}
+                          </p>
+                        </div>
+                      </div>
+                      <Badge variant={cam.status === "healthy" ? "default" : "destructive"}>{cam.status}</Badge>
+                    </div>
+                  ))
+                ) : selectedIntersectionId ? (
+                  <p className="text-sm text-muted-foreground">No cameras connected</p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Select an intersection to view camera health</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Processing Control + System Logs */}
+          <div className="grid gap-6 lg:grid-cols-2 items-start">
             {/* Processing Control */}
-            {selectedIntersectionId && (
+            {selectedIntersectionId ? (
               <Card>
                 <CardHeader>
                   <CardTitle>Processing Control</CardTitle>
@@ -228,12 +264,12 @@ export default function SystemMonitorPage() {
                     </div>
                   </div>
 
-                  {processingStatus?.uptime_seconds && (
+                  {processingStatus?.uptime_seconds != null ? (
                     <div className="rounded-lg bg-muted p-4">
                       <p className="text-sm text-muted-foreground mb-2">Uptime</p>
                       <p className="font-semibold">{formatUptime(Math.floor(processingStatus.uptime_seconds))}</p>
                     </div>
-                  )}
+                  ) : null}
 
                   <div className="space-y-2 pt-4">
                     <Button
@@ -256,84 +292,58 @@ export default function SystemMonitorPage() {
                   </div>
                 </CardContent>
               </Card>
-            )}
-
-            {/* Camera Health */}
-            {selectedIntersectionId && (
+            ) : (
               <Card>
                 <CardHeader>
-                  <CardTitle>Camera Health</CardTitle>
-                  <CardDescription>Connected cameras status</CardDescription>
+                  <CardTitle>Processing Control</CardTitle>
                 </CardHeader>
-                <CardContent className="space-y-3">
-                  {cameraHealth && Object.entries(cameraHealth).length > 0 ? (
-                    Object.entries(cameraHealth).map(([cameraId, health]) => (
-                      <div key={cameraId} className="flex items-center justify-between p-2 bg-muted rounded-lg">
-                        <div className="flex items-center gap-2">
-                          {health.status === "healthy" ? (
-                            <CheckCircle className="w-4 h-4 text-green-600" />
-                          ) : (
-                            <XCircle className="w-4 h-4 text-red-600" />
-                          )}
-                          <div>
-                            <p className="text-sm font-medium">{cameraId}</p>
-                            <p className="text-xs text-muted-foreground">
-                              {health.fps?.toFixed(1) || "N/A"} FPS
-                              {health.resolution && ` • ${health.resolution[0]}x${health.resolution[1]}`}
-                            </p>
-                          </div>
-                        </div>
-                        <Badge variant={health.status === "healthy" ? "default" : "destructive"}>
-                          {health.status}
-                        </Badge>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="text-sm text-muted-foreground">No cameras connected</p>
-                  )}
+                <CardContent>
+                  <p className="text-sm text-muted-foreground">Select an intersection to control processing.</p>
                 </CardContent>
               </Card>
             )}
-          </div>
 
-          {/* System Logs */}
-          <Card>
-            <CardHeader>
-              <CardTitle>System Logs</CardTitle>
-              <CardDescription>Recent system events and notifications</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="max-h-64 space-y-2 overflow-y-auto">
-                {logs.length > 0 ? (
-                  logs.map((log) => (
-                    <div
-                      key={log.id}
-                      className="flex items-start gap-3 rounded-lg border border-border bg-secondary/30 p-3"
-                    >
-                      <Badge
-                        variant="outline"
-                        className={`mt-0.5 ${
-                          log.level === "error"
-                            ? "border-status-error text-status-error"
-                            : log.level === "warning"
-                              ? "border-status-warning text-status-warning"
-                              : "border-status-active text-status-active"
-                        }`}
+            {/* System Logs */}
+            <Card>
+              <CardHeader>
+                <CardTitle>System Logs</CardTitle>
+                <CardDescription>Recent system events and notifications</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="max-h-64 space-y-2 overflow-y-auto">
+                  {logs.length > 0 ? (
+                    logs.map((log) => (
+                      <div
+                        key={log.id}
+                        className="flex items-start gap-3 rounded-lg border border-border bg-secondary/30 p-3"
                       >
-                        {log.level.toUpperCase()}
-                      </Badge>
-                      <div className="flex-1">
-                        <p className="text-sm">{log.message}</p>
-                        <p className="text-xs text-muted-foreground">{log.timestamp.toLocaleTimeString()}</p>
+                        <Badge
+                          variant="outline"
+                          className={`mt-0.5 ${
+                            log.level === "error"
+                              ? "border-status-error text-status-error"
+                              : log.level === "warning"
+                                ? "border-status-warning text-status-warning"
+                                : "border-status-active text-status-active"
+                          }`}
+                        >
+                          {log.level.toUpperCase()}
+                        </Badge>
+                        <div className="flex-1">
+                          <p className="text-sm">{log.message}</p>
+                          <p className="text-xs text-muted-foreground">{log.timestamp.toLocaleTimeString()}</p>
+                        </div>
                       </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-center text-muted-foreground py-8">No logs yet. System events will appear here.</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+                    ))
+                  ) : (
+                    <p className="text-center text-muted-foreground py-8">
+                      No logs yet. System events will appear here.
+                    </p>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </main>
     </div>

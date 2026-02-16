@@ -8,11 +8,13 @@ import type {
   IntersectionConfig,
   CameraHealthResponse,
   HealthResponse,
+  HealthAlert,
   AppSettings,
   CameraDevice,
   UploadedVideo,
   VideoSourcesResponse,
   SourceAssignmentResponse,
+  DecisionLogEntry,
 } from "./types"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
@@ -29,6 +31,21 @@ export async function getHealth(): Promise<HealthResponse> {
 export async function getSettings(): Promise<AppSettings> {
   const response = await fetch(`${API_V1}/system/settings`)
   if (!response.ok) throw new Error("Failed to fetch settings")
+  return response.json()
+}
+
+export async function getHealthAlerts(): Promise<HealthAlert[]> {
+  const response = await fetch(`${API_V1}/health/alerts`)
+  if (!response.ok) throw new Error("Failed to fetch health alerts")
+  return response.json()
+}
+
+export async function getDecisionLog(intersectionId: string, limit: number = 50): Promise<DecisionLogEntry[]> {
+  const url = new URL(`${API_V1}/system/decision-log`)
+  url.searchParams.set("intersection_id", intersectionId)
+  url.searchParams.set("limit", String(limit))
+  const response = await fetch(url.toString())
+  if (!response.ok) throw new Error("Failed to fetch decision log")
   return response.json()
 }
 
@@ -131,18 +148,33 @@ export function getStatusStreamUrl(intersectionId: string): string {
 
 // ===== Video Source Endpoints =====
 
-export async function listCameras(): Promise<CameraDevice[]> {
+
+
+let _cachedCameras: CameraDevice[] | null = null
+let _cachedCamerasTs = 0
+const CAMERA_CACHE_TTL = Number(process.env.NEXT_PUBLIC_CAMERA_CACHE_TTL_SECONDS) || 60
+
+export async function listCameras(force: boolean = false): Promise<CameraDevice[]> {
+  const now = Date.now() / 1000
+  if (!force && _cachedCameras && now - _cachedCamerasTs < CAMERA_CACHE_TTL) {
+    return _cachedCameras
+  }
+
   const response = await fetch(`${API_V1}/sources/cameras`)
   if (!response.ok) throw new Error("Failed to fetch cameras")
   const data = await response.json()
   // Backend returns { cameras: [ { index, name, ... } ] }
   const cams = data?.cameras || []
-  return cams.map((c: any) => ({
+  const mapped = cams.map((c: any) => ({
     id: String(c.index ?? c.id ?? c.name),
     name: c.name ?? `Camera ${c.index ?? c.id}`,
     device_path: c.device_path ?? c.device_path ?? undefined,
     type: c.type ?? "camera",
   }))
+
+  _cachedCameras = mapped
+  _cachedCamerasTs = Date.now() / 1000
+  return mapped
 }
 
 export async function listUploadedVideos(): Promise<UploadedVideo[]> {

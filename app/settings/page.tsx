@@ -13,8 +13,11 @@ import { Settings, Database, Server, Shield } from "lucide-react"
 import { getSettings, getHealth } from "@/lib/api"
 import { toast } from "sonner"
 import type { AppSettings, HealthResponse } from "@/lib/types"
+import { useSearchParams } from "next/navigation"
 
 export default function SettingsPage() {
+  const searchParams = useSearchParams()
+  const newIntersection = (searchParams.get("new_intersection") || "").trim()
   const [apiUrl, setApiUrl] = useState(process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000")
   const [isSaving, setIsSaving] = useState(false)
 
@@ -48,12 +51,28 @@ export default function SettingsPage() {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <main className="pl-72">
+      <main className="min-w-0 md:pl-72">
         <Header
           title="Settings"
           subtitle="System configuration and preferences"
         />
         <div className="space-y-6 p-6">
+          {newIntersection ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>New Intersection</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <p className="text-sm">
+                  You entered: <span className="font-semibold">{newIntersection}</span>
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Intersection creation is currently managed by backend configuration files. Use this name when updating your backend intersection config.
+                </p>
+              </CardContent>
+            </Card>
+          ) : null}
+
           {/* System Status */}
           <Card>
             <CardHeader>

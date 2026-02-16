@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { AlertCircle, CheckCircle2 } from "lucide-react"
+import { toast } from "sonner"
 import {
   listIntersections,
   getIntersectionConfig,
@@ -16,7 +17,6 @@ import {
   resetIntersection,
   getIntersectionStatus,
 } from "@/lib/api"
-import { toast } from "sonner"
 import type { IntersectionSummary, IntersectionConfig, VACStatus } from "@/lib/types"
 
 export default function TrafficControlPage() {
@@ -130,7 +130,7 @@ export default function TrafficControlPage() {
               max={max}
               step={step}
               disabled={updateDisabled}
-              className="h-9 [appearance:auto] [&::-webkit-outer-spin-button]:opacity-100 [&::-webkit-inner-spin-button]:opacity-100"
+              className="h-9 bg-background border-border [appearance:auto] [&::-webkit-outer-spin-button]:opacity-100 [&::-webkit-inner-spin-button]:opacity-100"
             />
           </div>
         </div>
@@ -142,25 +142,26 @@ export default function TrafficControlPage() {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <main className="pl-72">
+      <main className="min-w-0 md:pl-72">
         <Header
           title="Traffic Light Control"
           subtitle="Configure dynamic traffic signal parameters (VAC Algorithm)"
         />
         <div className="space-y-6 p-6">
-          {/* Intersection Selector */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Select Intersection</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid gap-6 md:grid-cols-2">
-                <div>
-                  <p className="text-sm text-muted-foreground mb-3">Intersection</p>
+          {/* Intersection + Algorithm Selectors */}
+          <div className="grid gap-6 lg:grid-cols-2 items-start">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base sm:text-lg">Select Intersection</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="border-t border-border pt-4">
+                  <p className="text-sm text-muted-foreground mb-3">Intersections</p>
                   <div className="flex flex-wrap gap-2">
                     {intersections?.map((intersection) => (
                       <Button
                         key={intersection.id}
+                        size="sm"
                         variant={selectedId === intersection.id ? "default" : "outline"}
                         onClick={() => setSelectedId(intersection.id)}
                       >
@@ -169,39 +170,35 @@ export default function TrafficControlPage() {
                     ))}
                   </div>
                 </div>
+              </CardContent>
+            </Card>
 
-                <div className="border-t pt-6 md:border-t-0 md:border-l md:pt-0 md:pl-6">
-                  <p className="text-sm text-muted-foreground mb-3">Select Algorithm</p>
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setControlMode("vac")}
-                      className={
-                        controlMode === "vac"
-                          ? "border-green-600 bg-green-600 text-white hover:bg-green-600/90 hover:text-white"
-                          : "border-green-600 text-green-700 hover:bg-green-50"
-                      }
-                    >
-                      VAC Algorithm
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setControlMode("fixed")}
-                      className={
-                        controlMode === "fixed"
-                          ? "border-red-600 bg-red-600 text-white hover:bg-red-600/90 hover:text-white"
-                          : "border-red-600 text-red-700 hover:bg-red-50"
-                      }
-                    >
-                      Go back to Fixed Timing
-                    </Button>
-                  </div>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base sm:text-lg">Select Algorithm</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground mb-3">Control mode</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant={controlMode === "vac" ? "default" : "outline"}
+                    onClick={() => setControlMode("vac")}
+                  >
+                    VAC Algorithm
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() => setControlMode("fixed")}
+                  >
+                    Go back to Fixed Timing
+                  </Button>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
 
           {selectedId && vacStatus && (
             <>

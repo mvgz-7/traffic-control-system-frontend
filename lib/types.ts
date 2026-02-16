@@ -94,6 +94,26 @@ export interface HealthResponse {
   metrics: Record<string, number>
 }
 
+export type HealthAlertSeverity = "warning" | "critical"
+
+export interface HealthAlert {
+  metric: string
+  value: number
+  unit: string
+  severity: HealthAlertSeverity
+  message: string
+  timestamp: number
+}
+
+export interface DecisionLogEntry {
+  timestamp: number
+  phase: string
+  action: string
+  reason: string
+  elapsed?: number | null
+  gap?: number | null
+}
+
 export interface AppSettings {
   debug: boolean
   log_level: string

@@ -9,12 +9,12 @@ const inter = Inter({ subsets: ["latin"] })
 const mono = Fira_Code({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "MALOLOS Traffic Control System",
+  title: "Traffic Control System",
   description: "Vehicle counting and dynamic traffic light system for improved traffic flow",
 }
 
 export const viewport: Viewport = {
-  themeColor: "#1a1625",
+  themeColor: "#22c55e",
 }
 
 export default function RootLayout({

@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
+import { toast } from "sonner"
 import { Cpu, HardDrive, MemoryStick, Timer, CheckCircle, XCircle, Play, Square } from "lucide-react"
 import { CameraSourceManager } from "@/components/dashboard/camera-source-manager"
 import {
@@ -18,7 +19,6 @@ import {
   stopProcessing,
   getHealth,
 } from "@/lib/api"
-import { toast } from "sonner"
 import type { IntersectionSummary, ProcessingStatus, CameraHealthResponse, HealthResponse } from "@/lib/types"
 
 interface SystemLog {
@@ -138,25 +138,29 @@ export default function SystemMonitorPage() {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <main className="pl-72">
+      <main className="min-w-0 md:pl-72">
         <Header title="System Monitor" subtitle="System health and configuration" />
         <div className="space-y-6 p-6">
           {/* Intersection Selector */}
           <Card>
             <CardHeader>
-              <CardTitle>Select Intersection</CardTitle>
+              <CardTitle className="text-base sm:text-lg">Select Intersection</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {intersections?.map((intersection) => (
-                  <Button
-                    key={intersection.id}
-                    variant={selectedIntersectionId === intersection.id ? "default" : "outline"}
-                    onClick={() => setSelectedIntersectionId(intersection.id)}
-                  >
-                    {intersection.name}
-                  </Button>
-                ))}
+              <div className="border-t border-border pt-4">
+                <p className="text-sm text-muted-foreground mb-3">Intersections</p>
+                <div className="flex flex-wrap gap-2">
+                  {intersections?.map((intersection) => (
+                    <Button
+                      key={intersection.id}
+                      size="sm"
+                      variant={selectedIntersectionId === intersection.id ? "default" : "outline"}
+                      onClick={() => setSelectedIntersectionId(intersection.id)}
+                    >
+                      {intersection.name}
+                    </Button>
+                  ))}
+                </div>
               </div>
             </CardContent>
           </Card>

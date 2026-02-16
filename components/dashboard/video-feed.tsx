@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { getVideoStreamUrl, startProcessing, stopProcessing } from "@/lib/api"
-import { Play, Square } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { getVideoStreamUrl } from "@/lib/api"
 import type { VideoFrameMessage } from "@/lib/types"
 
 interface VideoFeedWebSocketProps {
@@ -17,8 +18,64 @@ export function VideoFeedWebSocket({ intersectionId, onFrame }: VideoFeedWebSock
   const [isConnected, setIsConnected] = useState(false)
   const reconnectRef = useRef<{ attempts: number }>({ attempts: 0 })
   const containerRef = useRef<HTMLDivElement | null>(null)
-  const [isProcessing, setIsProcessing] = useState<boolean>(false)
+  const fullscreenRef = useRef<HTMLDivElement | null>(null)
   const [showDetections, setShowDetections] = useState<boolean>(true)
+
+  const drawFrameToCanvas = (img: HTMLImageElement) => {
+    const canvas = canvasRef.current
+    const container = containerRef.current
+    if (!canvas || !container) return
+
+    const ctx = canvas.getContext("2d")
+    if (!ctx) return
+
+    const rect = container.getBoundingClientRect()
+    const targetWidth = Math.max(1, Math.floor(rect.width))
+    const targetHeight = Math.max(1, Math.floor(rect.height))
+
+    if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+      canvas.width = targetWidth
+      canvas.height = targetHeight
+    }
+
+    // Clear to black background
+    ctx.fillStyle = "#000"
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+    // Letterbox (contain) to avoid aspect ratio jumps
+    const scale = Math.min(canvas.width / img.width, canvas.height / img.height)
+    const drawWidth = Math.floor(img.width * scale)
+    const drawHeight = Math.floor(img.height * scale)
+    const dx = Math.floor((canvas.width - drawWidth) / 2)
+    const dy = Math.floor((canvas.height - drawHeight) / 2)
+
+    ctx.drawImage(img, dx, dy, drawWidth, drawHeight)
+  }
+
+  useEffect(() => {
+    const container = containerRef.current
+    const canvas = canvasRef.current
+    if (!container || !canvas) return
+
+    const ro = new ResizeObserver(() => {
+      // Trigger a resize of the backing store so the canvas stays crisp.
+      const rect = container.getBoundingClientRect()
+      const targetWidth = Math.max(1, Math.floor(rect.width))
+      const targetHeight = Math.max(1, Math.floor(rect.height))
+      if (canvas.width !== targetWidth || canvas.height !== targetHeight) {
+        canvas.width = targetWidth
+        canvas.height = targetHeight
+        const ctx = canvas.getContext("2d")
+        if (ctx) {
+          ctx.fillStyle = "#000"
+          ctx.fillRect(0, 0, canvas.width, canvas.height)
+        }
+      }
+    })
+
+    ro.observe(container)
+    return () => ro.disconnect()
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -34,42 +91,29 @@ export function VideoFeedWebSocket({ intersectionId, onFrame }: VideoFeedWebSock
         reconnectRef.current.attempts = 0
       }
 
-    ws.onmessage = async (event) => {
-      try {
-        const message = JSON.parse(event.data)
-        if (message.type === "frame" && message.frame) {
-          const canvas = canvasRef.current
-          if (canvas) {
-            const ctx = canvas.getContext("2d")
+      ws.onmessage = async (event) => {
+        try {
+          const message = JSON.parse(event.data)
+          if (message.type === "frame" && message.frame) {
             const img = new Image()
             img.crossOrigin = "anonymous"
             img.onload = () => {
-              // Set canvas internal pixel size to the frame's native resolution
-              canvas.width = img.width
-              canvas.height = img.height
-
-              // Draw at native resolution
-              ctx?.drawImage(img, 0, 0)
-
-              // Make the canvas responsive: full width of container, height auto to preserve aspect ratio
-              try {
-                canvas.style.width = "100%"
-                canvas.style.height = "auto"
-              } catch (_) {}
+              if (cancelled) return
+              drawFrameToCanvas(img)
             }
             img.src = `data:image/jpeg;base64,${message.frame}`
+
+            // Surface metadata to parent (lane counts, fps, vac status, camera health)
+            try {
+              onFrame && onFrame(message as VideoFrameMessage)
+            } catch (e) {
+              console.warn("onFrame callback failed", e)
+            }
           }
-          // Surface metadata to parent (lane counts, fps, vac status, camera health)
-          try {
-            onFrame && onFrame(message as VideoFrameMessage)
-          } catch (e) {
-            console.warn("onFrame callback failed", e)
-          }
+        } catch (err) {
+          console.error("Error processing frame:", err)
         }
-      } catch (err) {
-        console.error("Error processing frame:", err)
       }
-    }
 
     ws.onerror = (error) => {
       console.error("WebSocket error:", error)
@@ -106,57 +150,24 @@ export function VideoFeedWebSocket({ intersectionId, onFrame }: VideoFeedWebSock
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
           <span>CCTV Feed</span>
-          {isConnected ? (
-            <span className="text-xs px-2 py-1 bg-green-500/20 text-green-700 rounded">Connected</span>
-          ) : (
-            <span className="text-xs px-2 py-1 bg-red-500/20 text-red-700 rounded">Disconnected</span>
-          )}
+          <Badge variant={isConnected ? "success" : "destructive"} className="text-xs">
+            {isConnected ? "Connected" : "Disconnected"}
+          </Badge>
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <div ref={containerRef} className="relative w-full">
-          <canvas
-            ref={canvasRef}
-            className="w-full h-auto border rounded-lg bg-black"
+        <div ref={fullscreenRef} className="relative w-full">
+          <div
+            ref={containerRef}
+            className="relative w-full aspect-video overflow-hidden rounded-lg border bg-black"
             style={{ maxHeight: "65vh" }}
-          />
+          >
+            <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
+          </div>
 
           {/* Controls */}
-          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <button
-              onClick={async () => {
-                try {
-                  if (!isProcessing) {
-                    await startProcessing(intersectionId)
-                    setIsProcessing(true)
-                  } else {
-                    await stopProcessing(intersectionId)
-                    setIsProcessing(false)
-                  }
-                } catch (e) {
-                  console.error("Failed to toggle processing", e)
-                }
-              }}
-              className={
-                isProcessing
-                  ? "px-4 py-2 rounded-md bg-green-600 text-white text-sm font-semibold hover:bg-red-600/90"
-                  : "px-4 py-2 rounded-md bg-red-600 text-white text-sm font-semibold hover:bg-green-600/90"
-              }
-            >
-              {isProcessing ? (
-                <span className="inline-flex items-center gap-2">
-                  <Play className="h-4 w-4" />
-                  Start
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-2">
-                  <Square className="h-4 w-4" />
-                  Stop
-                </span>
-              )}
-            </button>
-
-            <div className="flex items-center gap-3">
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <label className="inline-flex items-center gap-2 text-sm">
                 <input
                   type="checkbox"
@@ -174,9 +185,12 @@ export function VideoFeedWebSocket({ intersectionId, onFrame }: VideoFeedWebSock
                 Show Detection
               </label>
 
-              <button
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => {
-                  const el = containerRef.current
+                  const el = fullscreenRef.current
                   if (!el) return
                   if (document.fullscreenElement) {
                     document.exitFullscreen().catch(() => {})
@@ -184,11 +198,10 @@ export function VideoFeedWebSocket({ intersectionId, onFrame }: VideoFeedWebSock
                     el.requestFullscreen().catch(() => {})
                   }
                 }}
-                className="px-3 py-2 rounded-md bg-slate-800 text-white text-sm hover:bg-slate-800/90"
                 title="Fullscreen"
               >
                 Fullscreen
-              </button>
+              </Button>
             </div>
           </div>
         </div>

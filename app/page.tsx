@@ -48,7 +48,7 @@ export default function DashboardPage() {
     return (
       <div className="min-h-screen bg-background">
         <Sidebar />
-        <main className="pl-72">
+        <main className="min-w-0 md:pl-72">
           <Header
             title="Traffic Dashboard"
             subtitle="Real-time vehicle detection and dynamic traffic light control"
@@ -68,7 +68,7 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-background">
       <Sidebar />
-      <main className="pl-72">
+      <main className="min-w-0 md:pl-72">
         <Header
           title="Traffic Dashboard"
           subtitle="Real-time vehicle detection and dynamic traffic light control"
@@ -85,21 +85,21 @@ export default function DashboardPage() {
           {selectedIntersection && (
             <>
               {/* Video Feed */}
-              <div className="gap-6">
-                <div className="lg:col-span-2">
+              <div className="min-w-0">
+                <div className="min-w-0">
                   <VideoFeedWebSocket intersectionId={selectedIntersection} />
                 </div>
               </div>
 
               {/* Three-column under CCTV Feed */}
-              <div className="grid gap-6 lg:grid-cols-3 items-stretch">
-                <div className="h-full">
+              <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3 items-stretch">
+                <div className="h-full min-w-0">
                   <CameraSourceManager intersectionId={selectedIntersection} />
                 </div>
-                <div className="h-full">
+                <div className="h-full min-w-0">
                   <VACStatusDisplay intersectionId={selectedIntersection} />
                 </div>
-                <div className="h-full">
+                <div className="h-full min-w-0">
                   <VehicleSummary />
                 </div>
               </div>

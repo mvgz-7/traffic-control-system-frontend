@@ -122,18 +122,33 @@ export default function AnalyticsPage() {
   useEffect(() => {
     if (!vacStatus) return
     const ts = Date.now()
-    const stateUpper = String(vacStatus.state ?? "").toUpperCase()
+
+    // Derive a representative lane status (prefer currently GREEN lane)
+    const lanes = (vacStatus as any).lanes || {}
+    const laneValues = Object.values(lanes)
+    let rep: any = null
+    if (laneValues.length > 0) {
+      rep = laneValues.find((l: any) => (l.state ?? '').toUpperCase() === 'GREEN') || laneValues[0]
+    }
+
+    const elapsed = rep ? Number(rep.elapsed ?? 0) : Number((vacStatus as any).elapsed ?? 0)
+    const gap = rep ? Number(rep.gap ?? 0) : Number((vacStatus as any).gap ?? 0)
+    const maxGreen = rep ? Number(rep.max_green ?? 0) : Number((vacStatus as any).max_green ?? 0)
+    const state = rep ? String(rep.state ?? '') : String((vacStatus as any).state ?? '')
+
+    const stateUpper = String(state ?? '').toUpperCase()
     const stateValue = stateUpper === "GREEN" ? 1 : stateUpper === "YELLOW" ? 0.5 : 0
-    const utilization = vacStatus.max_green > 0 ? Math.min((vacStatus.elapsed / vacStatus.max_green) * 100, 100) : 0
+    const utilization = maxGreen > 0 ? Math.min((elapsed / maxGreen) * 100, 100) : 0
+
     const point: AnalyticsPoint = {
       ts,
       time: formatTimeLabel(ts),
-      elapsed: Number(vacStatus.elapsed ?? 0),
-      gap: Number(vacStatus.gap ?? 0),
+      elapsed: Number(elapsed),
+      gap: Number(gap),
       utilization,
-      state: String(vacStatus.state ?? ""),
+      state: String(state ?? ""),
       stateValue,
-      activeLanes: Array.isArray(vacStatus.active_lanes) ? vacStatus.active_lanes.length : 0,
+      activeLanes: Array.isArray((vacStatus as any).active_lanes) ? (vacStatus as any).active_lanes.length : Object.keys(lanes).length,
     }
 
     setHistory((prev) => {
@@ -151,6 +166,10 @@ export default function AnalyticsPage() {
       series: history,
     }
   }, [history, selectedId, vacStatus])
+  // Representative lane/status helper (prefer currently GREEN lane)
+  const lanesMap = (vacStatus as any)?.lanes ?? {}
+  const laneValues = Object.values(lanesMap)
+  const rep: any = laneValues.length > 0 ? (laneValues.find((l: any) => (String(l.state ?? '').toUpperCase() === 'GREEN')) || laneValues[0]) : null
 
   return (
     <div className="min-h-screen bg-background">
@@ -293,7 +312,7 @@ export default function AnalyticsPage() {
                       <div className="grid gap-3 md:grid-cols-2 items-start">
                         <div className="flex items-center gap-4">
                           {(() => {
-                            const stateUpper = vacStatus.state ? vacStatus.state.toString().toUpperCase() : ""
+                            const stateUpper = String(rep?.state ?? vacStatus?.state ?? "").toUpperCase()
                             const redOn = stateUpper === "ALL_RED" || stateUpper === "RED"
                             const yellowOn = stateUpper === "YELLOW"
                             const greenOn = stateUpper === "GREEN"
@@ -318,11 +337,11 @@ export default function AnalyticsPage() {
                           <div className="space-y-2">
                             <div>
                               <p className="text-sm text-muted-foreground">Phase</p>
-                              <p className="text-lg font-semibold">{vacStatus.phase_name}</p>
+                              <p className="text-lg font-semibold">{vacStatus?.phase_name ?? rep?.phase_name ?? '-'}</p>
                             </div>
                             <div>
                               <p className="text-sm text-muted-foreground">State</p>
-                              <p className="text-lg font-semibold">{vacStatus.state}</p>
+                              <p className="text-lg font-semibold">{(rep?.state ?? vacStatus?.state ?? '-')}</p>
                             </div>
                           </div>
                         </div>
@@ -330,11 +349,11 @@ export default function AnalyticsPage() {
                         <div className="space-y-3">
                           <div className="flex items-center justify-between p-3 bg-muted rounded">
                             <span className="text-sm">Elapsed</span>
-                            <span className="font-semibold">{vacStatus.elapsed.toFixed(1)}s</span>
+                            <span className="font-semibold">{typeof rep?.elapsed === 'number' ? `${rep.elapsed.toFixed(1)}s` : typeof vacStatus?.elapsed === 'number' ? `${vacStatus.elapsed.toFixed(1)}s` : '-'}</span>
                           </div>
                           <div className="flex items-center justify-between p-3 bg-muted rounded">
                             <span className="text-sm">Gap</span>
-                            <span className="font-semibold">{vacStatus.gap.toFixed(2)}s</span>
+                            <span className="font-semibold">{typeof rep?.gap === 'number' ? `${rep.gap.toFixed(2)}s` : typeof vacStatus?.gap === 'number' ? `${vacStatus.gap.toFixed(2)}s` : '-'}</span>
                           </div>
                         </div>
                       </div>
@@ -368,17 +387,17 @@ export default function AnalyticsPage() {
                         <div
                           className="bg-green-500 h-2 rounded-full transition-all duration-300"
                           style={{
-                            width: `${Math.min((vacStatus.elapsed / vacStatus.max_green) * 100, 100)}%`,
+                            width: `${Math.min(((rep?.elapsed ?? vacStatus?.elapsed ?? 0) / (rep?.max_green ?? vacStatus?.max_green ?? 1)) * 100, 100)}%`,
                           }}
                         />
                       </div>
                       <p className="text-xs text-muted-foreground mt-2">
-                        {vacStatus.elapsed.toFixed(1)}s / {vacStatus.max_green.toFixed(1)}s
+                        {typeof rep?.elapsed === 'number' ? rep.elapsed.toFixed(1) : typeof vacStatus?.elapsed === 'number' ? vacStatus.elapsed.toFixed(1) : '-'}s / {typeof rep?.max_green === 'number' ? rep.max_green.toFixed(1) : typeof vacStatus?.max_green === 'number' ? vacStatus.max_green.toFixed(1) : '-'}s
                       </p>
                     </CardContent>
                   </Card>
 
-                  {vacStatus.decision && (
+                  {(rep?.decision || (vacStatus as any)?.decision) && (
                     <Card>
                       <CardHeader>
                         <CardTitle>Current Algorithm Decision</CardTitle>
@@ -387,11 +406,11 @@ export default function AnalyticsPage() {
                         <div className="bg-muted p-4 rounded-lg space-y-2">
                           <div>
                             <p className="text-xs text-muted-foreground">Action</p>
-                            <p className="text-lg font-semibold">{vacStatus.decision.action}</p>
+                            <p className="text-lg font-semibold">{(rep?.decision ?? (vacStatus as any).decision)?.action}</p>
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground">Reason</p>
-                            <p className="text-sm">{vacStatus.decision.reason}</p>
+                            <p className="text-sm">{(rep?.decision ?? (vacStatus as any).decision)?.reason}</p>
                           </div>
                         </div>
                       </CardContent>
@@ -406,11 +425,11 @@ export default function AnalyticsPage() {
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1">
                           <p className="text-sm text-muted-foreground">Min Green Time</p>
-                          <p className="text-lg font-semibold">{vacStatus.min_green.toFixed(1)}s</p>
+                          <p className="text-lg font-semibold">{typeof rep?.min_green === 'number' ? rep.min_green.toFixed(1) : typeof vacStatus?.min_green === 'number' ? vacStatus.min_green.toFixed(1) : '-'}s</p>
                         </div>
                         <div className="space-y-1">
                           <p className="text-sm text-muted-foreground">Max Green Time</p>
-                          <p className="text-lg font-semibold">{vacStatus.max_green.toFixed(1)}s</p>
+                          <p className="text-lg font-semibold">{typeof rep?.max_green === 'number' ? rep.max_green.toFixed(1) : typeof vacStatus?.max_green === 'number' ? vacStatus.max_green.toFixed(1) : '-'}s</p>
                         </div>
                       </div>
                     </CardContent>

@@ -6,8 +6,8 @@ export interface VACStatus {
   phase: string
   phase_name: string
   state: TrafficLightState
-  elapsed: number
-  gap: number
+  elapsed?: number
+  gap?: number
   min_green: number
   max_green: number
   max_gap: number
@@ -77,6 +77,8 @@ export interface VideoFrameMessage {
   lane_counts: Record<string, number>
   fps: number
   camera_health: CameraHealthResponse
+  // Optional per-line, per-class counts: { line_id: { class_name: count } }
+  line_counts?: Record<string, Record<string, number>>
 }
 
 export interface StatusMessage {
@@ -94,7 +96,7 @@ export interface HealthResponse {
   metrics: Record<string, number>
 }
 
-export type HealthAlertSeverity = "warning" | "critical"
+export type HealthAlertSeverity = string
 
 export interface HealthAlert {
   metric: string
@@ -144,7 +146,14 @@ export interface VideoSourcesResponse {
 }
 
 export interface SourceAssignmentResponse {
-  message: string
-  assigned_to: string
-  source_id: string
+  // Backend returns success, intersection_id, camera_id, new_source, message
+  // Keep a flexible shape for compatibility with both frontend and backend.
+  success?: boolean
+  message?: string
+  intersection_id?: string
+  camera_id?: string
+  new_source?: string | number
+  // Convenience/legacy fields
+  assigned_to?: string
+  source_id?: string
 }

@@ -37,7 +37,9 @@ export async function getSettings(): Promise<AppSettings> {
 export async function getHealthAlerts(): Promise<HealthAlert[]> {
   const response = await fetch(`${API_V1}/health/alerts`)
   if (!response.ok) throw new Error("Failed to fetch health alerts")
-  return response.json()
+  const alerts = await response.json()
+  // Normalize severity casing to lowercase for frontend consumption
+  return (alerts || []).map((a: any) => ({ ...a, severity: String(a.severity || a.severity).toLowerCase() }))
 }
 
 export async function getDecisionLog(intersectionId: string, limit: number = 50): Promise<DecisionLogEntry[]> {
@@ -244,5 +246,41 @@ export async function assignSourceToCamera(
     }
     throw new Error(detail)
   }
+  const data = await response.json()
+  // Map backend response into a flexible shape (include legacy fields)
+  const mapped: SourceAssignmentResponse = {
+    ...data,
+    assigned_to: `${data.intersection_id ?? intersectionId}:${data.camera_id ?? cameraId}`,
+    source_id: String(data.new_source ?? data.source ?? ""),
+  }
+  return mapped
+}
+
+// ===== Line counting endpoints =====
+
+export async function getLineCounts(intersectionId: string, start?: number, end?: number): Promise<any> {
+  const url = new URL(`${API_V1}/intersections/${intersectionId}/line-counts`)
+  if (start != null) url.searchParams.set("start", String(start))
+  if (end != null) url.searchParams.set("end", String(end))
+  const response = await fetch(url.toString())
+  if (!response.ok) throw new Error(`Failed to fetch line counts for ${intersectionId}`)
+  return response.json()
+}
+
+export async function resetLineCounts(intersectionId: string): Promise<any> {
+  const response = await fetch(`${API_V1}/intersections/${intersectionId}/line-counts/reset`, { method: "POST" })
+  if (!response.ok) throw new Error(`Failed to reset line counts for ${intersectionId}`)
+  return response.json()
+}
+
+// ===== Control Mode (VAC vs Fixed-time) =====
+
+export async function setControlMode(intersectionId: string, mode: "vac" | "fixed_time") {
+  const response = await fetch(`${API_V1}/intersections/${intersectionId}/control-mode`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode }),
+  })
+  if (!response.ok) throw new Error(`Failed to set control mode for ${intersectionId}`)
   return response.json()
 }

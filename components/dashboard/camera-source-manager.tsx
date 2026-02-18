@@ -63,9 +63,8 @@ export function CameraSourceManager({ intersectionId }: CameraSourceManagerProps
 
   // (Deprecated) general assign button removed. Use per-slot quick assign below.
 
-  // Quick assign UI state for camera_north and camera_south (mixed sources)
-  const [northSelection, setNorthSelection] = useState<string>("")
-  const [southSelection, setSouthSelection] = useState<string>("")
+  // Quick assign UI state (dynamic slots per intersection)
+  const [selections, setSelections] = useState<Record<string, string>>({})
 
   const handleQuickAssign = async (slot: string, selection: string) => {
     if (!selection) {
@@ -157,40 +156,44 @@ export function CameraSourceManager({ intersectionId }: CameraSourceManagerProps
           <div className="space-y-3">
             {/* Quick 2-slot assign for camera_north and camera_south */}
             <div className="grid grid-cols-1 gap-3">
-              {['camera_north','camera_south'].map((slot) => (
-                <div key={slot} className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <div className="font-medium sm:w-32">{slot}</div>
-                  <select
-                    className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 sm:flex-1"
-                    value={slot === 'camera_north' ? northSelection : southSelection}
-                    onChange={(e) => {
-                      const val = e.target.value
-                      if (slot === 'camera_north') setNorthSelection(val)
-                      else setSouthSelection(val)
-                    }}
-                  >
-                    <option value="">Select source...</option>
-                    <optgroup label="Hardware Cameras">
-                      {cameras?.map((c) => (
-                        <option key={`cam-${c.id}-${slot}`} value={`cam:${c.id}`}>{`cam: ${c.name}`}</option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="Uploaded Videos">
-                      {videos?.map((v) => (
-                        <option key={`vid-${v.id}-${slot}`} value={`file:${v.file_path}`}>{`file: ${v.filename}`}</option>
-                      ))}
-                    </optgroup>
-                  </select>
-                  <Button
-                    size="sm"
-                    className="w-full sm:w-auto"
-                    onClick={() => handleQuickAssign(slot, slot === 'camera_north' ? northSelection : southSelection)}
-                    disabled={isAssigning}
-                  >
-                    OK
-                  </Button>
-                </div>
-              ))}
+              {(() => {
+                const defaultSlots = ['camera_north', 'camera_south']
+                const gracelandSlots = ['camera_lane1', 'camera_lane2', 'camera_overview']
+                const slots = intersectionId === 'graceland' ? gracelandSlots : defaultSlots
+                return slots.map((slot) => (
+                  <div key={slot} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                    <div className="font-medium sm:w-32 min-w-0">{slot}</div>
+                    <select
+                      className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm shadow-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 sm:flex-1 min-w-0"
+                      value={selections[slot] ?? ''}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        setSelections((prev) => ({ ...prev, [slot]: val }))
+                      }}
+                    >
+                      <option value="">Select source...</option>
+                      <optgroup label="Hardware Cameras">
+                        {cameras?.map((c) => (
+                          <option key={`cam-${c.id}-${slot}`} value={`cam:${c.id}`}>{`cam: ${c.name}`}</option>
+                        ))}
+                      </optgroup>
+                      <optgroup label="Uploaded Videos">
+                        {videos?.map((v) => (
+                          <option key={`vid-${v.id}-${slot}`} value={`file:${v.file_path}`}>{`file: ${v.filename}`}</option>
+                        ))}
+                      </optgroup>
+                    </select>
+                    <Button
+                      size="sm"
+                      className="w-full sm:w-auto sm:flex-shrink-0"
+                      onClick={() => handleQuickAssign(slot, selections[slot] ?? '')}
+                      disabled={isAssigning}
+                    >
+                      OK
+                    </Button>
+                  </div>
+                ))
+              })()}
             </div>
           </div>
         </div>

@@ -7,8 +7,6 @@ import { Header } from "@/components/layout/header"
 import { VideoFeedWebSocket } from "@/components/dashboard/video-feed"
 import { IntersectionSelector } from "@/components/dashboard/intersection-selector"
 import { VACStatusDisplay } from "@/components/dashboard/vac-status"
-import { CameraHealthCard } from "@/components/dashboard/camera-health"
-import { LaneCountsCard } from "@/components/dashboard/lane-counts"
 import { listIntersections } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Spinner } from "@/components/ui/spinner"
@@ -18,6 +16,7 @@ import { VehicleSummary } from "@/components/dashboard/vehicle-summary"
 
 export default function DashboardPage() {
   const [selectedIntersection, setSelectedIntersection] = useState<string>("")
+  const [liveVacStatus, setLiveVacStatus] = useState<any | null>(null)
   
   // Fetch list of intersections
   const { data: intersections, isLoading: isLoadingIntersections } = useSWR<IntersectionSummary[]>(
@@ -55,6 +54,9 @@ export default function DashboardPage() {
           />
           <div className="p-6">
             <Card>
+              <CardHeader>
+                <CardTitle>No Intersections</CardTitle>
+              </CardHeader>
               <CardContent className="pt-6">
                 <p className="text-center text-muted-foreground">No intersections configured. Please check your backend configuration.</p>
               </CardContent>
@@ -86,21 +88,28 @@ export default function DashboardPage() {
             <>
               {/* Video Feed */}
               <div className="min-w-0">
-                <div className="min-w-0">
-                  <VideoFeedWebSocket intersectionId={selectedIntersection} />
-                </div>
+                <VideoFeedWebSocket
+                  intersectionId={selectedIntersection}
+                  onFrame={(msg) => {
+                    try {
+                      if (msg?.vac_status) setLiveVacStatus(msg.vac_status)
+                    } catch (_) {}
+                  }}
+                />
               </div>
 
-              {/* Three-column under CCTV Feed */}
-              <div className="grid gap-6 lg:grid-cols-2 xl:grid-cols-3 items-stretch">
+              {/* Under video: VAC status (single column) */}
+              <div className="min-w-0">
+                <VACStatusDisplay intersectionId={selectedIntersection} liveStatus={liveVacStatus} />
+              </div>
+
+              {/* Under VAC: 2 columns */}
+              <div className="grid gap-6 lg:grid-cols-2 items-stretch">
                 <div className="h-full min-w-0">
                   <CameraSourceManager intersectionId={selectedIntersection} />
                 </div>
                 <div className="h-full min-w-0">
-                  <VACStatusDisplay intersectionId={selectedIntersection} />
-                </div>
-                <div className="h-full min-w-0">
-                  <VehicleSummary />
+                  <VehicleSummary intersectionId={selectedIntersection} />
                 </div>
               </div>
             </>

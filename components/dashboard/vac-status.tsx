@@ -2,98 +2,127 @@
 
 import useSWR from "swr"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Spinner } from "@/components/ui/spinner"
 import { getIntersectionStatus } from "@/lib/api"
-import type { VACStatus } from "@/lib/types"
 
 interface VACStatusDisplayProps {
   intersectionId: string
+  liveStatus?: any
 }
 
-export function VACStatusDisplay({ intersectionId }: VACStatusDisplayProps) {
-  const { data: status } = useSWR<VACStatus>(
-    [`vac-status`, intersectionId],
+function renderTrafficLight(state?: unknown) {
+  const s = String(state ?? "").toUpperCase()
+  const redOn = s === "ALL_RED" || s === "RED"
+  const yellowOn = s === "YELLOW"
+  const greenOn = s === "GREEN"
+  return (
+    <div className="w-14 p-2 bg-black rounded-md flex flex-col items-center gap-2">
+      <div
+        className={`w-8 h-8 rounded-full ${redOn ? "bg-red-500 ring-4 ring-red-400" : "bg-gray-700"}`}
+        style={{ boxShadow: redOn ? "0 0 10px rgba(239,68,68,0.6)" : undefined }}
+      />
+      <div
+        className={`w-8 h-8 rounded-full ${yellowOn ? "bg-yellow-400 ring-4 ring-yellow-300" : "bg-gray-700"}`}
+        style={{ boxShadow: yellowOn ? "0 0 10px rgba(234,179,8,0.45)" : undefined }}
+      />
+      <div
+        className={`w-8 h-8 rounded-full ${greenOn ? "bg-green-500 ring-4 ring-green-300" : "bg-gray-700"}`}
+        style={{ boxShadow: greenOn ? "0 0 10px rgba(34,197,94,0.45)" : undefined }}
+      />
+    </div>
+  )
+}
+
+function formatSeconds(value: unknown, digits = 1): string {
+  if (typeof value === "number" && Number.isFinite(value)) return `${value.toFixed(digits)}s`
+  return "-"
+}
+
+export function VACStatusDisplay({ intersectionId, liveStatus }: VACStatusDisplayProps) {
+  const { data, error, isLoading } = useSWR(
+    intersectionId ? ["intersectionStatus", intersectionId] : null,
     () => getIntersectionStatus(intersectionId),
-    { refreshInterval: 500 }
+    {
+      refreshInterval: 2000,
+    }
   )
 
-  if (!status) {
+  const status: any = liveStatus || data
+
+  if (isLoading && !status) {
     return (
       <Card>
         <CardHeader>
           <CardTitle>VAC Status</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-muted-foreground">Loading...</p>
+          <div className="flex items-center justify-center py-8">
+            <Spinner />
+          </div>
         </CardContent>
       </Card>
     )
   }
 
+  if (error) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>VAC Status</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-destructive">Failed to load VAC status</p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  const lanes: Record<string, any> = status?.lanes || {}
+  const laneIds = Object.keys(lanes).slice(0, 3)
+
   return (
-    <Card className="h-full">
+    <Card>
       <CardHeader>
         <CardTitle>VAC Status</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid gap-3 md:grid-cols-2 items-start">
-          <div className="flex items-center gap-4">
-            {/* Traffic light illustration */}
-            {(() => {
-              const stateUpper = status.state ? status.state.toString().toUpperCase() : ''
-              const redOn = stateUpper === 'ALL_RED' || stateUpper === 'RED'
-              const yellowOn = stateUpper === 'YELLOW'
-              const greenOn = stateUpper === 'GREEN'
+      <CardContent>
+        {laneIds.length === 0 ? (
+          <p className="text-sm text-muted-foreground">No lane status available</p>
+        ) : (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {/* Lane labels at top (desktop) */}
+            <div className="hidden sm:col-span-3 sm:grid sm:grid-cols-3 sm:gap-4">
+              {laneIds.map((laneId) => (
+                <div key={`label-${laneId}`} className="text-sm font-medium text-center">
+                  {laneId}
+                </div>
+              ))}
+            </div>
+
+            {/* Per-lane status blocks */}
+            {laneIds.map((laneId) => {
+              const lane = lanes[laneId] || {}
               return (
-                <div className="w-14 p-2 bg-black rounded-md flex flex-col items-center gap-2">
-                  <div className={`w-8 h-8 rounded-full ${redOn ? 'bg-red-500 ring-4 ring-red-400' : 'bg-gray-700'}`} style={{ boxShadow: redOn ? '0 0 10px rgba(239,68,68,0.6)' : undefined }} />
-                  <div className={`w-8 h-8 rounded-full ${yellowOn ? 'bg-yellow-400 ring-4 ring-yellow-300' : 'bg-gray-700'}`} style={{ boxShadow: yellowOn ? '0 0 10px rgba(234,179,8,0.45)' : undefined }} />
-                  <div className={`w-8 h-8 rounded-full ${greenOn ? 'bg-green-500 ring-4 ring-green-300' : 'bg-gray-700'}`} style={{ boxShadow: greenOn ? '0 0 10px rgba(34,197,94,0.45)' : undefined }} />
+                <div key={laneId} className="rounded-lg border p-3">
+                  <div className="sm:hidden mb-2 text-sm font-medium text-center">{laneId}</div>
+                  <div className="flex items-center justify-center">
+                    {renderTrafficLight(lane.state)}
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Elapsed</div>
+                      <div>{formatSeconds(lane.elapsed, 1)}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Gap</div>
+                      <div>{formatSeconds(lane.gap, 2)}</div>
+                    </div>
+                  </div>
                 </div>
               )
-            })()}
-            <div className="space-y-2">
-              <div>
-                <p className="text-sm text-muted-foreground">Phase</p>
-                <p className="font-semibold">{status.phase_name}</p>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">State</p>
-                <p className="font-semibold">{status.state}</p>
-              </div>
-            </div>
+            })}
           </div>
-
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-3 bg-muted rounded">
-              <span className="text-sm">Elapsed</span>
-              <span className="font-semibold">{status.elapsed.toFixed(1)}s</span>
-            </div>
-            <div className="flex items-center justify-between p-3 bg-muted rounded">
-              <span className="text-sm">Gap</span>
-              <span className="font-semibold">{status.gap.toFixed(2)}s</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Active Lanes */}
-        <div className="mt-4">
-          <p className="text-sm text-muted-foreground mb-2">Active Lanes</p>
-          {Array.isArray((status as any).active_lanes) && (status as any).active_lanes.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {(status as any).active_lanes.map((lane: string) => (
-                <span key={lane} className="px-2 py-1 bg-green-50 text-green-800 rounded">{lane}</span>
-              ))}
-            </div>
-          ) : (status as any).lane_counts ? (
-            <div className="flex flex-wrap gap-2">
-              {Object.entries((status as any).lane_counts).map(([k, v]) => (
-                <span key={k} className="px-2 py-1 bg-muted rounded">{k}: {String(v)}</span>
-              ))}
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">No active lanes reported</p>
-          )}
-        </div>
+        )}
       </CardContent>
     </Card>
   )

@@ -18,6 +18,8 @@ import {
   getIntersectionStatus,
 } from "@/lib/api"
 import type { IntersectionSummary, IntersectionConfig, VACStatus } from "@/lib/types"
+import { VideoFeedWebSocket } from "@/components/dashboard/video-feed"
+import { VehicleSummary } from "@/components/dashboard/vehicle-summary"
 
 export default function TrafficControlPage() {
   const [selectedId, setSelectedId] = useState("")
@@ -46,6 +48,9 @@ export default function TrafficControlPage() {
     selectedId ? () => getIntersectionStatus(selectedId) : null,
     { refreshInterval: 500 }
   )
+
+  // Live frame metadata pushed from the WebSocket (frame messages)
+  const [liveFrame, setLiveFrame] = useState<any | null>(null)
 
   useEffect(() => {
     if (intersections && intersections.length > 0 && !selectedId) {
@@ -236,13 +241,13 @@ export default function TrafficControlPage() {
                   <div>
                     <p className="text-xs text-muted-foreground">Elapsed</p>
                     <p className="text-lg font-semibold">
-                      {controlMode === "fixed" ? "—" : `${vacStatus.elapsed.toFixed(1)}s`}
+                      {controlMode === "fixed" ? "—" : (vacStatus.elapsed != null ? `${vacStatus.elapsed.toFixed(1)}s` : '-')}
                     </p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Gap</p>
                     <p className="text-lg font-semibold">
-                      {controlMode === "fixed" ? "—" : `${vacStatus.gap.toFixed(2)}s`}
+                      {controlMode === "fixed" ? "—" : (vacStatus.gap != null ? `${vacStatus.gap.toFixed(2)}s` : '-')}
                     </p>
                   </div>
                 </CardContent>
@@ -392,6 +397,18 @@ export default function TrafficControlPage() {
                   </Card>
                 </div>
               )}
+              {/* Live video feed + vehicle summary */}
+              <div className="grid gap-6 lg:grid-cols-2">
+                <VideoFeedWebSocket
+                  intersectionId={selectedId}
+                  onFrame={(msg: any) => {
+                    // store latest metadata for other components
+                    setLiveFrame(msg)
+                  }}
+                />
+
+                <VehicleSummary intersectionId={selectedId} liveLineCounts={liveFrame?.line_counts ?? null} />
+              </div>
             </>
           )}
         </div>

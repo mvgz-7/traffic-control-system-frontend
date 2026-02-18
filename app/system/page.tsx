@@ -261,7 +261,7 @@ export default function SystemMonitorPage() {
                     <div className="flex items-center gap-2">
                       <div
                         className={`w-3 h-3 rounded-full ${
-                          processingStatus?.state === "RUNNING" ? "bg-green-500" : "bg-gray-500"
+                          String(processingStatus?.state || "").toUpperCase() === "RUNNING" ? "bg-green-500" : "bg-gray-500"
                         }`}
                       />
                       <p className="font-semibold">{processingStatus?.state || "UNKNOWN"}</p>
@@ -278,7 +278,7 @@ export default function SystemMonitorPage() {
                   <div className="space-y-2 pt-4">
                     <Button
                       onClick={handleStartProcessing}
-                      disabled={isProcessingUpdating || processingStatus?.state === "RUNNING"}
+                      disabled={isProcessingUpdating || String(processingStatus?.state || "").toUpperCase() === "RUNNING"}
                       className="w-full"
                     >
                       <Play className="mr-2 h-4 w-4" />
@@ -286,7 +286,7 @@ export default function SystemMonitorPage() {
                     </Button>
                     <Button
                       onClick={handleStopProcessing}
-                      disabled={isProcessingUpdating || processingStatus?.state !== "RUNNING"}
+                      disabled={isProcessingUpdating || String(processingStatus?.state || "").toUpperCase() !== "RUNNING"}
                       variant="destructive"
                       className="w-full"
                     >

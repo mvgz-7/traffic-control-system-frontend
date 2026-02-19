@@ -89,10 +89,12 @@ export default function SettingsPage() {
                     {(() => {
                       const statusUpper = String(health?.status ?? "").toUpperCase()
                       const isHealthy = statusUpper === "HEALTHY"
+                      const isDegraded = statusUpper === "DEGRADED"
+                      const isUnknown = !health?.status
                       return (
                         <>
-                          <div className={`w-3 h-3 rounded-full ${isHealthy ? "bg-green-500" : "bg-red-500"}`} />
-                          <Badge variant={isHealthy ? "default" : "destructive"}>{health?.status ?? "Unknown"}</Badge>
+                          <div className={`w-3 h-3 rounded-full ${isHealthy ? "bg-green-500" : isDegraded ? "bg-amber-500" : isUnknown ? "bg-gray-400" : "bg-red-500"}`} />
+                          <Badge variant={isHealthy ? "default" : isDegraded ? "warning" : isUnknown ? "secondary" : "destructive"}>{health?.status ?? "Unknown"}</Badge>
                         </>
                       )
                     })()}

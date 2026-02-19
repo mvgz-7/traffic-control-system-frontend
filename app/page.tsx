@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import useSWR from "swr"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
@@ -35,6 +35,13 @@ export default function DashboardPage() {
       setSelectedIntersection(intersections[0].id)
     }
   }, [intersections, selectedIntersection])
+
+  const handleFrame = useCallback((msg: any) => {
+    try {
+      if (msg?.vac_status) setLiveVacStatus(msg.vac_status)
+      if (msg?.line_counts) setLiveLineCounts(msg.line_counts)
+    } catch (_) {}
+  }, [])
 
   if (isLoadingIntersections || !intersections) {
     return (
@@ -91,12 +98,7 @@ export default function DashboardPage() {
               <div className="min-w-0">
                 <VideoFeedWebSocket
                   intersectionId={selectedIntersection}
-                  onFrame={(msg) => {
-                    try {
-                      if (msg?.vac_status) setLiveVacStatus(msg.vac_status)
-                      if (msg?.line_counts) setLiveLineCounts(msg.line_counts)
-                    } catch (_) {}
-                  }}
+                  onFrame={handleFrame}
                 />
               </div>
 

@@ -39,13 +39,15 @@ export function CameraHealthCard({ intersectionId }: CameraHealthCardProps) {
       <CardContent className="space-y-3">
         {Object.entries(health).map(([cameraId, cam]) => {
           const isAlive = cam.alive
+          const camStatusStr = String(cam.status ?? "").toLowerCase()
+          const isCamError = camStatusStr === "error" || camStatusStr === "failed"
           return (
             <div key={cameraId} className="flex items-center justify-between p-3 bg-muted rounded">
               <div className="flex items-center gap-2">
                 {isAlive ? (
                   <CheckCircle className="w-4 h-4 text-green-500" />
                 ) : (
-                  <AlertCircle className="w-4 h-4 text-red-500" />
+                  <AlertCircle className={`w-4 h-4 ${isCamError ? "text-red-500" : "text-muted-foreground"}`} />
                 )}
                 <div>
                   <p className="text-sm font-medium">{cameraId}</p>
@@ -62,7 +64,7 @@ export function CameraHealthCard({ intersectionId }: CameraHealthCardProps) {
                 </div>
               </div>
               <div className="flex flex-col items-end gap-1">
-                <Badge variant={isAlive ? "default" : "destructive"}>
+                <Badge variant={isAlive ? "default" : isCamError ? "destructive" : "secondary"}>
                   {cam.status}
                 </Badge>
                 {cam.quality_warning && (

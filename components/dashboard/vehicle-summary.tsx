@@ -26,6 +26,8 @@ const VEHICLE_CLASSES = [
   "Van",
 ]
 
+
+
 export function VehicleSummary({ intersectionId, liveLineCounts }: VehicleSummaryProps) {
   const [isResetting, setIsResetting] = useState(false)
   const { data, error, isLoading, mutate } = useSWR(
@@ -94,7 +96,7 @@ export function VehicleSummary({ intersectionId, liveLineCounts }: VehicleSummar
         )}
 
         <div className="mb-4">
-          <div className="p-4 rounded-lg bg-gradient-to-r from-white/5 to-white/3 border border-muted flex items-center justify-between">
+          <div className="p-4 rounded-lg bg-gradient-to-r from-primary/5 to-primary/10 border border-primary/20 flex items-center justify-between">
             <div>
               <p className="text-sm text-muted-foreground">Total Vehicles</p>
               <p className="text-4xl md:text-5xl font-extrabold text-foreground">{total}</p>
@@ -109,14 +111,18 @@ export function VehicleSummary({ intersectionId, liveLineCounts }: VehicleSummar
         </div>
 
         <div className="w-full">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {VEHICLE_CLASSES.map((c) => {
               const count = classCounts[c] ?? 0
               return (
-                <div key={c} className="min-w-0 rounded-lg border border-border p-3">
-                  <div className="text-xs text-muted-foreground truncate">{c}</div>
-                  <div className="mt-2 rounded-lg bg-muted px-3 py-2 text-center">
-                    <div className="text-2xl font-semibold text-foreground tabular-nums">{count}</div>
+                <div
+                  key={c}
+                  className="min-w-0 rounded-lg border border-border p-3 flex items-center gap-3"
+                  style={{ borderLeftWidth: "3px" }}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs text-muted-foreground truncate">{c}</div>
+                    <div className="text-xl font-bold text-foreground tabular-nums mt-0.5">{count}</div>
                   </div>
                 </div>
               )
@@ -125,7 +131,7 @@ export function VehicleSummary({ intersectionId, liveLineCounts }: VehicleSummar
         </div>
 
         <p className="text-xs text-muted-foreground mt-3">
-          Counts come from <span className="font-medium">/api/v1/intersections/{intersectionId}/line-counts</span>.
+          Aggregated from counting line crossings. Reset to clear all counts.
         </p>
       </CardContent>
     </Card>

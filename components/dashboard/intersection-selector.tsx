@@ -17,24 +17,19 @@ export function IntersectionSelector({
 }: IntersectionSelectorProps) {
   return (
     <Card>
-      <CardHeader>
-        <CardTitle className="text-base sm:text-lg">Select Intersection</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <div className="border-t border-border pt-4">
-          <p className="text-sm text-muted-foreground mb-3">Intersections</p>
-          <div className="flex flex-wrap gap-2">
-            {intersections.map((intersection) => (
-              <Button
-                key={intersection.id}
-                size="sm"
-                variant={selectedId === intersection.id ? "default" : "outline"}
-                onClick={() => onSelect(intersection.id)}
-              >
-                {intersection.name}
-              </Button>
-            ))}
-          </div>
+      <CardContent className="py-3">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-sm font-semibold text-foreground whitespace-nowrap">Select Intersection:</span>
+          {intersections.map((intersection) => (
+            <Button
+              key={intersection.id}
+              size="sm"
+              variant={selectedId === intersection.id ? "default" : "outline"}
+              onClick={() => onSelect(intersection.id)}
+            >
+              {intersection.name}
+            </Button>
+          ))}
         </div>
       </CardContent>
     </Card>

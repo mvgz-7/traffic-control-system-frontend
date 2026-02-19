@@ -11,6 +11,7 @@ import { Progress } from "@/components/ui/progress"
 import { toast } from "sonner"
 import { Cpu, HardDrive, MemoryStick, Timer, CheckCircle, XCircle, Play, Square, ShieldAlert } from "lucide-react"
 import { CameraSourceManager } from "@/components/dashboard/camera-source-manager"
+import { IntersectionSelector } from "@/components/dashboard/intersection-selector"
 import {
   listIntersections,
   getProcessingStatus,
@@ -189,28 +190,11 @@ export default function SystemMonitorPage() {
         <Header title="System Monitor" subtitle="System health and configuration" />
         <div className="space-y-6 p-6">
           {/* Intersection Selector */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base sm:text-lg">Select Intersection</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="border-t border-border pt-4">
-                <p className="text-sm text-muted-foreground mb-3">Intersections</p>
-                <div className="flex flex-wrap gap-2">
-                  {intersections?.map((intersection) => (
-                    <Button
-                      key={intersection.id}
-                      size="sm"
-                      variant={selectedIntersectionId === intersection.id ? "default" : "outline"}
-                      onClick={() => setSelectedIntersectionId(intersection.id)}
-                    >
-                      {intersection.name}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <IntersectionSelector
+            intersections={intersections || []}
+            selectedId={selectedIntersectionId}
+            onSelect={setSelectedIntersectionId}
+          />
 
           {/* System Health Overview */}
           <div className="grid gap-4 md:grid-cols-4">
@@ -332,13 +316,16 @@ export default function SystemMonitorPage() {
               </CardHeader>
               <CardContent className="space-y-3">
                 {selectedIntersectionId && cameraHealth && Object.entries(cameraHealth).length > 0 ? (
-                  Object.entries(cameraHealth).map(([cameraId, cam]) => (
+                  Object.entries(cameraHealth).map(([cameraId, cam]) => {
+                    const camSt = String(cam.status ?? "").toLowerCase()
+                    const isCamErr = camSt === "error" || camSt === "failed"
+                    return (
                     <div key={cameraId} className="flex items-center justify-between p-2 bg-muted rounded-lg">
                       <div className="flex items-center gap-2">
                         {cam.alive ? (
                           <CheckCircle className="w-4 h-4 text-green-600" />
                         ) : (
-                          <XCircle className="w-4 h-4 text-red-600" />
+                          <XCircle className={`w-4 h-4 ${isCamErr ? "text-red-600" : "text-muted-foreground"}`} />
                         )}
                         <div>
                           <p className="text-sm font-medium">{cameraId}</p>
@@ -348,9 +335,9 @@ export default function SystemMonitorPage() {
                           </p>
                         </div>
                       </div>
-                      <Badge variant={cam.alive ? "default" : "destructive"}>{cam.status}</Badge>
+                      <Badge variant={cam.alive ? "default" : isCamErr ? "destructive" : "secondary"}>{cam.status}</Badge>
                     </div>
-                  ))
+                  )})
                 ) : selectedIntersectionId ? (
                   <p className="text-sm text-muted-foreground">No cameras connected</p>
                 ) : (

@@ -23,7 +23,7 @@
   --cta-foreground: #ffffff;
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
-  --border: #e5e7eb;
+  --border: #c7cdd4;
   --input: #d1d5db;
   --ring: #15803d;
   --chart-1: #22c55e;
@@ -32,14 +32,14 @@
   --chart-4: #ef4444;
   --chart-5: #a78bfa;
   --radius: 0.5rem;
-  --sidebar: #f1f5f9;
-  --sidebar-foreground: #0b0b0b;
-  --sidebar-primary: #15803d;
+  --sidebar: #0c2818;
+  --sidebar-foreground: #e8f5ec;
+  --sidebar-primary: #22c55e;
   --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: #bbf7d0;
-  --sidebar-accent-foreground: #0b0b0b;
-  --sidebar-border: #e6edf3;
-  --sidebar-ring: #15803d;
+  --sidebar-accent: rgba(34, 197, 94, 0.15);
+  --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: rgba(34, 197, 94, 0.18);
+  --sidebar-ring: #22c55e;
   /* Traffic light colors */
   --traffic-green: #22c55e;
   --traffic-yellow: #f59e0b;

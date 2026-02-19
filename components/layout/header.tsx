@@ -1,7 +1,7 @@
 "use client"
 
 import { Bell, RefreshCw } from "lucide-react"
-import { useMemo } from "react"
+import { useMemo, memo } from "react"
 import Link from "next/link"
 import useSWR from "swr"
 import { Button } from "@/components/ui/button"
@@ -18,7 +18,7 @@ interface HeaderProps {
   actions?: React.ReactNode
 }
 
-export function Header({ title, subtitle, onRefresh, isRefreshing, actions }: HeaderProps) {
+export const Header = memo(function Header({ title, subtitle, onRefresh, isRefreshing, actions }: HeaderProps) {
   const { data: alerts } = useSWR<HealthAlert[]>("health-alerts", getHealthAlerts, {
     refreshInterval: 5000,
     revalidateOnFocus: false,
@@ -85,7 +85,7 @@ export function Header({ title, subtitle, onRefresh, isRefreshing, actions }: He
       </div>
     </header>
   )
-}
+})
 
 function cn(...classes: (string | boolean | undefined)[]) {
   return classes.filter(Boolean).join(" ")

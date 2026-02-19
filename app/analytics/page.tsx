@@ -7,17 +7,9 @@ import { Header } from "@/components/layout/header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { listIntersections, getIntersectionStatus, getStatusStreamUrl } from "@/lib/api"
-import type { IntersectionSummary, IntersectionStatus, LaneStatus, StatusMessage } from "@/lib/types"
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-} from "recharts"
+import { IntersectionSelector } from "@/components/dashboard/intersection-selector"
+import { listIntersections, getIntersectionStatus, getDecisionLog, getStatusStreamUrl } from "@/lib/api"
+import type { IntersectionSummary, IntersectionStatus, LaneStatus, StatusMessage, DecisionLogEntry } from "@/lib/types"
 
 type AnalyticsPoint = {
   ts: number
@@ -66,6 +58,12 @@ export default function AnalyticsPage() {
     selectedId ? [`vac-status`, selectedId] : null,
     selectedId ? () => getIntersectionStatus(selectedId) : null,
     { refreshInterval: 2000 }
+  )
+
+  const { data: decisionLog } = useSWR<DecisionLogEntry[]>(
+    selectedId ? [`decision-log-analytics`, selectedId] : null,
+    selectedId ? () => getDecisionLog(selectedId, 30) : null,
+    { refreshInterval: 3000 }
   )
 
   // Use the lighter status_feed WebSocket instead of video_feed
@@ -183,9 +181,9 @@ export default function AnalyticsPage() {
           subtitle="Real-time traffic signal analytics"
           actions={
             <Button
-              variant="default"
-              size="lg"
-              className="bg-accent text-accent-foreground hover:bg-accent/90"
+              variant="outline"
+              size="sm"
+              className="border-primary text-primary hover:bg-primary/10"
               onClick={() => {
                 const safeId = selectedId || "intersection"
                 const ts = new Date().toISOString().replace(/[:.]/g, "-")
@@ -199,246 +197,158 @@ export default function AnalyticsPage() {
         />
         <div className="space-y-6 p-6">
           {/* Intersection Selector */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base sm:text-lg">Select Intersection</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="border-t border-border pt-4">
-                <p className="text-sm text-muted-foreground mb-3">Intersections</p>
-                <div className="flex flex-wrap gap-2">
-                  {intersections?.map((intersection) => (
-                    <Button
-                      key={intersection.id}
-                      size="sm"
-                      variant={selectedId === intersection.id ? "default" : "outline"}
-                      onClick={() => setSelectedId(intersection.id)}
-                    >
-                      {intersection.name}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+          <IntersectionSelector
+            intersections={intersections || []}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+          />
 
           {selectedId && intersectionStatus && (
             <>
-              {/* Charts */}
-              <div className="grid gap-6 lg:grid-cols-2">
+              {/* 3-column layout: Per-Lane Status | Vehicle Counts | VAC Decisions */}
+              <div className="grid gap-6 lg:grid-cols-3">
+                {/* Column 1: Per-Lane VAC Status */}
                 <Card>
                   <CardHeader>
-                    <CardTitle>Elapsed & Gap Over Time</CardTitle>
+                    <CardTitle>Per-Lane VAC Status</CardTitle>
                   </CardHeader>
-                  <CardContent className="h-[260px]">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={history} margin={{ left: 8, right: 8, top: 10, bottom: 10 }}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="time" tick={{ fontSize: 12 }} />
-                        <YAxis tick={{ fontSize: 12 }} />
-                        <Tooltip
-                          formatter={(value: any, name: any) => [value, name]}
-                          labelFormatter={(label: any) => `Time: ${label}`}
-                        />
-                        <Line type="monotone" dataKey="elapsed" name="Elapsed (s)" stroke="var(--chart-1)" dot={false} strokeWidth={2} />
-                        <Line type="monotone" dataKey="gap" name="Gap (s)" stroke="var(--chart-3)" dot={false} strokeWidth={2} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </CardContent>
-                </Card>
-
-                {/* Vehicle Summary Table (lane counts) */}
-                <Card>
-                  <CardHeader>
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <CardTitle>Vehicle Summary</CardTitle>
-                      <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="text-xs">
-                          Total: {laneCountTotal}
-                        </Badge>
-                        <Badge variant="outline" className="text-xs">
-                          Updated: {laneCountsUpdatedAt ? new Date(laneCountsUpdatedAt).toLocaleTimeString() : "—"}
-                        </Badge>
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="py-2 text-left font-medium">Lane</th>
-                            <th className="py-2 text-right font-medium">Count</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {laneCountRows.length > 0 ? (
-                            laneCountRows.map((row) => (
-                              <tr key={row.lane} className="border-b last:border-b-0">
-                                <td className="py-2 pr-4">
-                                  <span className="inline-flex rounded-md bg-muted px-2 py-1 text-xs">
-                                    {row.lane}
-                                  </span>
-                                </td>
-                                <td className="py-2 text-right tabular-nums font-semibold">{row.count}</td>
-                              </tr>
-                            ))
-                          ) : (
-                            <tr>
-                              <td className="py-3 text-muted-foreground" colSpan={2}>
-                                No lane count data yet. Start processing to see vehicle counts per lane.
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
-                    <p className="mt-3 text-xs text-muted-foreground">
-                      Uses lightweight <span className="font-medium">status_feed</span> WebSocket (no video overhead).
-                    </p>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Per-lane VAC Status + Active Lanes / Right = Green Utilization + Decision + Timing */}
-              <div className="grid gap-6 md:grid-cols-2">
-                {/* Left column */}
-                <div className="space-y-6">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Per-Lane VAC Status</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="grid gap-3">
-                        {laneIds.map((laneId) => {
-                          const lane = intersectionStatus.lanes[laneId]
-                          if (!lane) return null
-                          const stateUpper = String(lane.state ?? "").toUpperCase()
-                          const redOn = stateUpper === "ALL_RED" || stateUpper === "RED"
-                          const yellowOn = stateUpper === "YELLOW"
-                          const greenOn = stateUpper === "GREEN"
-                          return (
-                            <div key={laneId} className="flex items-center gap-4 p-3 rounded-lg border">
-                              <div className="w-10 p-1.5 bg-black rounded-md flex flex-col items-center gap-1.5">
-                                <div
-                                  className={`w-6 h-6 rounded-full ${redOn ? "bg-red-500 ring-2 ring-red-400" : "bg-gray-700"}`}
-                                  style={{ boxShadow: redOn ? "0 0 8px rgba(239,68,68,0.6)" : undefined }}
-                                />
-                                <div
-                                  className={`w-6 h-6 rounded-full ${yellowOn ? "bg-yellow-400 ring-2 ring-yellow-300" : "bg-gray-700"}`}
-                                  style={{ boxShadow: yellowOn ? "0 0 8px rgba(234,179,8,0.45)" : undefined }}
-                                />
-                                <div
-                                  className={`w-6 h-6 rounded-full ${greenOn ? "bg-green-500 ring-2 ring-green-300" : "bg-gray-700"}`}
-                                  style={{ boxShadow: greenOn ? "0 0 8px rgba(34,197,94,0.45)" : undefined }}
-                                />
-                              </div>
-
-                              <div className="flex-1 space-y-1">
-                                <div className="flex items-center justify-between">
-                                  <span className="font-semibold text-sm">{laneId}</span>
-                                  <Badge variant={greenOn ? "default" : stateUpper === "YELLOW" ? "secondary" : "destructive"}>
-                                    {lane.state}
-                                  </Badge>
-                                </div>
-                                <div className="grid grid-cols-2 gap-2 text-xs">
-                                  <div className="flex justify-between p-1.5 bg-muted rounded">
-                                    <span className="text-muted-foreground">Elapsed</span>
-                                    <span className="font-medium">{typeof lane.elapsed === "number" ? `${lane.elapsed.toFixed(1)}s` : "-"}</span>
-                                  </div>
-                                  <div className="flex justify-between p-1.5 bg-muted rounded">
-                                    <span className="text-muted-foreground">Gap</span>
-                                    <span className="font-medium">{typeof lane.gap === "number" ? `${lane.gap.toFixed(2)}s` : "-"}</span>
-                                  </div>
-                                </div>
-                              </div>
+                  <CardContent className="space-y-3">
+                    {laneIds.map((laneId) => {
+                      const lane = intersectionStatus.lanes[laneId]
+                      if (!lane) return null
+                      const stateUpper = String(lane.state ?? "").toUpperCase()
+                      const greenOn = stateUpper === "GREEN"
+                      const yellowOn = stateUpper === "YELLOW"
+                      const stateColor = greenOn ? "border-green-500/40 bg-green-500/5" : yellowOn ? "border-yellow-400/40 bg-yellow-400/5" : "border-red-500/30 bg-red-500/5"
+                      const badgeColor = greenOn ? "bg-green-500" : yellowOn ? "bg-yellow-400" : "bg-red-500"
+                      return (
+                        <div key={laneId} className={`rounded-lg border p-3 ${stateColor}`}>
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-semibold text-sm">{laneId}</span>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase text-white ${badgeColor}`}>{stateUpper || "—"}</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div className="flex justify-between p-1.5 bg-background/60 rounded">
+                              <span className="text-muted-foreground">Elapsed</span>
+                              <span className="font-medium tabular-nums">{typeof lane.elapsed === "number" ? `${lane.elapsed.toFixed(1)}s` : "-"}</span>
                             </div>
-                          )
-                        })}
-                      </div>
-
-                      <div className="pt-2 border-t">
-                        <p className="text-sm text-muted-foreground mb-2">Active Lanes</p>
-                        <div className="flex flex-wrap gap-2">
-                          {laneIds.filter((id) => {
-                            const s = String(intersectionStatus.lanes[id]?.state ?? "").toUpperCase()
-                            return s === "GREEN" || s === "YELLOW"
-                          }).length > 0 ? (
-                            laneIds.filter((id) => {
-                              const s = String(intersectionStatus.lanes[id]?.state ?? "").toUpperCase()
-                              return s === "GREEN" || s === "YELLOW"
-                            }).map((laneId) => (
-                              <Badge key={laneId} variant="default">{laneId}</Badge>
-                            ))
-                          ) : (
-                            <p className="text-xs text-muted-foreground">No active lanes</p>
+                            <div className="flex justify-between p-1.5 bg-background/60 rounded">
+                              <span className="text-muted-foreground">Gap</span>
+                              <span className="font-medium tabular-nums">{typeof lane.gap === "number" ? `${lane.gap.toFixed(2)}s` : "-"}</span>
+                            </div>
+                          </div>
+                          {lane.decision?.reason && (
+                            <p className="mt-1.5 text-[11px] text-muted-foreground truncate" title={lane.decision.reason}>{lane.decision.reason}</p>
                           )}
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
+                      )
+                    })}
 
-                {/* Right column */}
-                <div className="space-y-6">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Green Time Utilization</CardTitle>
-                    </CardHeader>
-                    <CardContent>
+                    {/* Green Utilization */}
+                    <div className="pt-3 border-t">
+                      <p className="text-xs text-muted-foreground mb-1.5">Green Utilization</p>
                       <div className="w-full bg-muted rounded-full h-2">
                         <div
                           className="bg-green-500 h-2 rounded-full transition-all duration-300"
-                          style={{
-                            width: `${Math.min(((rep?.elapsed ?? 0) / (rep?.max_green ?? 1)) * 100, 100)}%`,
-                          }}
+                          style={{ width: `${Math.min(((rep?.elapsed ?? 0) / (rep?.max_green ?? 1)) * 100, 100)}%` }}
                         />
                       </div>
-                      <p className="text-xs text-muted-foreground mt-2">
+                      <p className="text-[11px] text-muted-foreground mt-1">
                         {typeof rep?.elapsed === "number" ? rep.elapsed.toFixed(1) : "-"}s / {typeof rep?.max_green === "number" ? rep.max_green.toFixed(1) : "-"}s
-                        <span className="ml-2 text-muted-foreground/70">(representative GREEN lane)</span>
                       </p>
-                    </CardContent>
-                  </Card>
+                    </div>
+                  </CardContent>
+                </Card>
 
-                  {rep?.decision && (
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Current Algorithm Decision</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="bg-muted p-4 rounded-lg space-y-2">
-                          <div>
-                            <p className="text-xs text-muted-foreground">Action</p>
-                            <p className="text-lg font-semibold">{rep.decision.action}</p>
+                {/* Column 2: Vehicle Counts per Lane */}
+                <Card>
+                  <CardHeader>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <CardTitle>Vehicle Counts</CardTitle>
+                      <Badge variant="outline" className="text-xs tabular-nums">
+                        Total: {laneCountTotal}
+                      </Badge>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {laneCountRows.length > 0 ? (
+                        laneCountRows.map((row) => (
+                          <div key={row.lane} className="flex items-center justify-between p-2.5 bg-muted rounded-lg">
+                            <span className="text-sm font-medium">{row.lane}</span>
+                            <span className="text-lg font-bold tabular-nums">{row.count}</span>
                           </div>
-                          <div>
-                            <p className="text-xs text-muted-foreground">Reason</p>
-                            <p className="text-sm">{rep.decision.reason}</p>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
+                        ))
+                      ) : (
+                        <p className="text-sm text-muted-foreground py-4 text-center">No lane count data yet.</p>
+                      )}
+                    </div>
 
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Timing Info</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <p className="text-sm text-muted-foreground">Min Green Time</p>
-                          <p className="text-lg font-semibold">{typeof rep?.min_green === "number" ? `${rep.min_green.toFixed(1)}s` : "-"}</p>
+                    {/* Timing Info */}
+                    <div className="pt-3 mt-3 border-t">
+                      <p className="text-xs font-medium text-muted-foreground mb-2">Timing Parameters</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="p-2 bg-muted rounded">
+                          <p className="text-[11px] text-muted-foreground">Min Green</p>
+                          <p className="text-sm font-semibold">{typeof rep?.min_green === "number" ? `${rep.min_green.toFixed(0)}s` : "-"}</p>
                         </div>
-                        <div className="space-y-1">
-                          <p className="text-sm text-muted-foreground">Max Green Time</p>
-                          <p className="text-lg font-semibold">{typeof rep?.max_green === "number" ? `${rep.max_green.toFixed(1)}s` : "-"}</p>
+                        <div className="p-2 bg-muted rounded">
+                          <p className="text-[11px] text-muted-foreground">Max Green</p>
+                          <p className="text-sm font-semibold">{typeof rep?.max_green === "number" ? `${rep.max_green.toFixed(0)}s` : "-"}</p>
                         </div>
                       </div>
-                    </CardContent>
-                  </Card>
-                </div>
+                    </div>
+
+                    <p className="mt-3 text-[11px] text-muted-foreground">
+                      Updated: {laneCountsUpdatedAt ? new Date(laneCountsUpdatedAt).toLocaleTimeString() : "—"}
+                    </p>
+                  </CardContent>
+                </Card>
+
+                {/* Column 3: VAC Decision Log */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>VAC Decision Log</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2 max-h-[400px] overflow-y-auto">
+                      {decisionLog && decisionLog.length > 0 ? (
+                        decisionLog.map((d, i) => {
+                          const actionUpper = String(d.action ?? "").toUpperCase()
+                          const isExtend = actionUpper === "EXTEND" || actionUpper === "EXTEND_GREEN"
+                          const isTerminate = actionUpper === "TERMINATE" || actionUpper === "TERMINATE_GREEN"
+                          const actionColor = isExtend
+                            ? "bg-green-500/10 text-green-700 border-green-500/30"
+                            : isTerminate
+                              ? "bg-red-500/10 text-red-600 border-red-500/30"
+                              : "bg-muted text-foreground border-border"
+                          const dotColor = isExtend ? "bg-green-500" : isTerminate ? "bg-red-500" : "bg-muted-foreground"
+                          return (
+                            <div key={`${d.timestamp}-${i}`} className={`rounded-lg border p-2.5 ${actionColor}`}>
+                              <div className="flex items-center justify-between mb-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`inline-block w-2 h-2 rounded-full ${dotColor}`} />
+                                  <span className="text-xs font-bold uppercase">{d.action}</span>
+                                </div>
+                                <span className="text-[10px] text-muted-foreground">
+                                  {new Date(d.timestamp * 1000).toLocaleTimeString()}
+                                </span>
+                              </div>
+                              <p className="text-[11px] leading-snug">{d.reason}</p>
+                              <div className="flex gap-3 mt-1 text-[10px] text-muted-foreground">
+                                <span>Phase: {d.phase}</span>
+                                {typeof d.elapsed === "number" && <span>{d.elapsed.toFixed(1)}s</span>}
+                                {typeof d.gap === "number" && <span>Gap: {d.gap.toFixed(2)}s</span>}
+                              </div>
+                            </div>
+                          )
+                        })
+                      ) : (
+                        <p className="text-sm text-muted-foreground py-4 text-center">No decisions recorded yet.</p>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
               </div>
             </>
           )}

@@ -29,6 +29,7 @@ export function VideoFeedWebSocket({ intersectionId, onFrame }: VideoFeedWebSock
   const [tileMode, setTileMode] = useState(false)
   const [tileRows, setTileRows] = useState(1)
   const [tileCols, setTileCols] = useState(1)
+  const [currentTime, setCurrentTime] = useState(new Date())
 
   const drawFrameToCanvas = (img: HTMLImageElement) => {
     // single full-frame draw to main canvas
@@ -188,6 +189,12 @@ export function VideoFeedWebSocket({ intersectionId, onFrame }: VideoFeedWebSock
       ro.disconnect()
       if (resizeTimeoutRef.current) window.clearTimeout(resizeTimeoutRef.current)
     }
+  }, [])
+
+  // Live clock for date/time overlay
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000)
+    return () => clearInterval(timer)
   }, [])
 
   useEffect(() => {
@@ -356,6 +363,16 @@ export function VideoFeedWebSocket({ intersectionId, onFrame }: VideoFeedWebSock
                 <p className="text-sm text-muted-foreground">Connecting to video stream...</p>
               </div>
             )}
+
+            {/* Date & time overlay — lower-right */}
+            {hasFrame && (
+              <div className="absolute bottom-2 right-2 z-20 rounded bg-black/60 px-2.5 py-1 font-mono text-xs text-white backdrop-blur-sm">
+                <span>{currentTime.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" })}</span>
+                <span className="mx-1.5 text-white/40">|</span>
+                <span>{currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: true })}</span>
+              </div>
+            )}
+
             {!tileMode ? (
               <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
             ) : (

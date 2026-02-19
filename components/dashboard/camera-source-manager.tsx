@@ -106,6 +106,7 @@ export function CameraSourceManager({ intersectionId }: CameraSourceManagerProps
         <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <CardTitle className="text-base sm:text-lg">Camera Source Management</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">Assign video sources to camera slots</p>
           </div>
 
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
@@ -159,7 +160,10 @@ export function CameraSourceManager({ intersectionId }: CameraSourceManagerProps
       <CardContent>
         {/* Source Assignment Section */}
         <div className="rounded-lg bg-muted p-4">
-          <h3 className="font-semibold text-sm mb-3">Assign Source to Camera</h3>
+          <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
+            <Camera className="w-3.5 h-3.5 text-primary" />
+            Assign Source to Camera
+          </h3>
           <div className="space-y-3">
             {/* Dynamic camera slots — includes all cameras (lane cameras + overview) */}
             <div className="grid grid-cols-1 gap-3">
@@ -200,7 +204,7 @@ export function CameraSourceManager({ intersectionId }: CameraSourceManagerProps
                       onClick={() => handleQuickAssign(slot, selections[slot] ?? '')}
                       disabled={isAssigning}
                     >
-                      OK
+                      Assign
                     </Button>
                   </div>
                 ))
@@ -227,13 +231,28 @@ export function CameraSourceManager({ intersectionId }: CameraSourceManagerProps
                   const status = cam?.status
                   const s = status?.toString().toLowerCase() ?? ""
                   const isRunning = s === "running"
+                  // Only show error/failed if a source was actually assigned (frames_read > 0 or fps > 0)
+                  const hasBeenAssigned = (cam?.frames_read ?? 0) > 0 || (cam?.fps_actual ?? 0) > 0
+                  const isError = (s === "error" || s === "failed") && hasBeenAssigned
+                  const isIdle = !isRunning && !isError
+                  const slotClass = isRunning
+                    ? "border-primary/30 bg-primary/5"
+                    : isError
+                      ? "border-destructive/30 bg-destructive/5"
+                      : "border-border bg-muted/40"
+                  const dotClass = isRunning
+                    ? "bg-[color:var(--status-active)]"
+                    : isError
+                      ? "bg-destructive"
+                      : "bg-muted-foreground/40"
+                  const badgeVariant = isRunning ? "success" as const : isError ? "destructive" as const : "secondary" as const
+                  const displayStatus = isIdle ? "idle" : (status ?? "unknown")
 
                   return (
                     <div
                       key={camId}
                       className={
-                        "flex items-center justify-between gap-3 rounded-lg border px-3 py-2 " +
-                        (isRunning ? "border-primary/30 bg-primary/5" : "border-destructive/30 bg-destructive/5")
+                        "flex items-center justify-between gap-3 rounded-lg border px-3 py-2 " + slotClass
                       }
                     >
                       <p className="font-medium text-sm">{camId}</p>
@@ -243,12 +262,11 @@ export function CameraSourceManager({ intersectionId }: CameraSourceManagerProps
                         )}
                         <span
                           className={
-                            "inline-block h-2 w-2 rounded-full " +
-                            (isRunning ? "bg-[color:var(--status-active)]" : "bg-destructive")
+                            "inline-block h-2 w-2 rounded-full " + dotClass
                           }
                         />
-                        <Badge variant={isRunning ? "success" : "destructive"} className="text-xs">
-                          {status ?? "unknown"}
+                        <Badge variant={badgeVariant} className="text-xs">
+                          {displayStatus}
                         </Badge>
                       </div>
                     </div>

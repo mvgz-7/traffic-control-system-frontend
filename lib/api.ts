@@ -1,18 +1,20 @@
 // API configuration and helper functions for FastAPI backend
+// Aligned with 3-lane independent VAC backend (February 2026)
 import type {
-  VACStatus,
+  IntersectionStatus,
+  LaneConfig,
+  LaneConfigUpdate,
   SignalDisplay,
   ProcessingStatus,
   ControlResponse,
   IntersectionSummary,
-  IntersectionConfig,
   CameraHealthResponse,
   HealthResponse,
   HealthAlert,
+  HealthMetricPoint,
   AppSettings,
   CameraDevice,
   UploadedVideo,
-  VideoSourcesResponse,
   SourceAssignmentResponse,
   DecisionLogEntry,
 } from "./types"
@@ -59,7 +61,7 @@ export async function listIntersections(): Promise<IntersectionSummary[]> {
   return response.json()
 }
 
-export async function getIntersectionStatus(intersectionId: string): Promise<VACStatus> {
+export async function getIntersectionStatus(intersectionId: string): Promise<IntersectionStatus> {
   const response = await fetch(`${API_V1}/intersections/${intersectionId}/status`)
   if (!response.ok) throw new Error(`Failed to fetch status for ${intersectionId}`)
   return response.json()
@@ -71,30 +73,53 @@ export async function getIntersectionSignals(intersectionId: string): Promise<Si
   return response.json()
 }
 
-export async function getIntersectionConfig(intersectionId: string): Promise<IntersectionConfig> {
-  const response = await fetch(`${API_V1}/intersections/${intersectionId}/config`)
-  if (!response.ok) throw new Error(`Failed to fetch config for ${intersectionId}`)
+// ===== Per-lane config (matches backend /lanes/{lane_id}/config) =====
+
+export async function getLaneConfig(intersectionId: string, laneId: string): Promise<LaneConfig> {
+  const response = await fetch(`${API_V1}/intersections/${intersectionId}/lanes/${laneId}/config`)
+  if (!response.ok) throw new Error(`Failed to fetch config for ${intersectionId}/${laneId}`)
   return response.json()
 }
 
-export async function updateIntersectionConfig(
+export async function updateLaneConfig(
   intersectionId: string,
-  config: Partial<IntersectionConfig>
-): Promise<IntersectionConfig> {
-  const response = await fetch(`${API_V1}/intersections/${intersectionId}/config`, {
+  laneId: string,
+  config: LaneConfigUpdate
+): Promise<LaneConfig> {
+  const response = await fetch(`${API_V1}/intersections/${intersectionId}/lanes/${laneId}/config`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(config),
   })
-  if (!response.ok) throw new Error(`Failed to update config for ${intersectionId}`)
+  if (!response.ok) throw new Error(`Failed to update config for ${intersectionId}/${laneId}`)
   return response.json()
 }
 
-export async function resetIntersection(intersectionId: string): Promise<{ message: string; status: VACStatus }> {
+export async function resetIntersection(intersectionId: string): Promise<{ message: string; status: IntersectionStatus }> {
   const response = await fetch(`${API_V1}/intersections/${intersectionId}/reset`, {
     method: "POST",
   })
   if (!response.ok) throw new Error(`Failed to reset ${intersectionId}`)
+  return response.json()
+}
+
+// ===== Emergency Stop (force ALL lanes RED) =====
+
+export async function emergencyStop(intersectionId: string): Promise<{ message: string; signals: Record<string, string> }> {
+  const response = await fetch(`${API_V1}/intersections/${intersectionId}/emergency-stop`, {
+    method: "POST",
+  })
+  if (!response.ok) throw new Error(`Failed to emergency stop ${intersectionId}`)
+  return response.json()
+}
+
+// ===== Force Green for a specific lane =====
+
+export async function forceGreen(intersectionId: string, laneId: string): Promise<{ success: boolean; message: string; signals: Record<string, string> }> {
+  const response = await fetch(`${API_V1}/intersections/${intersectionId}/lanes/${laneId}/force-green`, {
+    method: "POST",
+  })
+  if (!response.ok) throw new Error(`Failed to force green for ${intersectionId}/${laneId}`)
   return response.json()
 }
 
@@ -126,7 +151,7 @@ export async function getCameraHealth(intersectionId: string): Promise<CameraHea
   return response.json()
 }
 
-export async function getIntersectionLanes(intersectionId: string): Promise<{ lanes: string[]; lane_to_camera: Record<string, string> }> {
+export async function getIntersectionLanes(intersectionId: string): Promise<{ lanes: any[]; lane_to_camera: Record<string, string>; vac_lane_ids: string[] }> {
   const response = await fetch(`${API_V1}/intersections/${intersectionId}/lanes`)
   if (!response.ok) throw new Error(`Failed to fetch lanes for ${intersectionId}`)
   return response.json()
@@ -273,14 +298,18 @@ export async function resetLineCounts(intersectionId: string): Promise<any> {
   return response.json()
 }
 
-// ===== Control Mode (VAC vs Fixed-time) =====
+// ===== Health Metrics (historical time-series) =====
 
-export async function setControlMode(intersectionId: string, mode: "vac" | "fixed_time") {
-  const response = await fetch(`${API_V1}/intersections/${intersectionId}/control-mode`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mode }),
-  })
-  if (!response.ok) throw new Error(`Failed to set control mode for ${intersectionId}`)
+export async function getHealthMetrics(metricName: string, duration: number = 300): Promise<HealthMetricPoint[]> {
+  const response = await fetch(`${API_V1}/health/metrics/${metricName}?duration=${duration}`)
+  if (!response.ok) throw new Error(`Failed to fetch health metric: ${metricName}`)
+  const data = await response.json()
+  // Backend may return { metric, duration, data_points: [...] } or an array directly
+  return data?.data_points || data || []
+}
+
+export async function getHealthComponents(): Promise<Array<{ component: string; status: string; message?: string; alert_count?: number }>> {
+  const response = await fetch(`${API_V1}/health/components`)
+  if (!response.ok) throw new Error("Failed to fetch health components")
   return response.json()
 }

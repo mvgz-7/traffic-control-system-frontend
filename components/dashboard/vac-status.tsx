@@ -4,10 +4,11 @@ import useSWR from "swr"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Spinner } from "@/components/ui/spinner"
 import { getIntersectionStatus } from "@/lib/api"
+import type { IntersectionStatus, LaneStatus } from "@/lib/types"
 
 interface VACStatusDisplayProps {
   intersectionId: string
-  liveStatus?: any
+  liveStatus?: IntersectionStatus | null
 }
 
 function renderTrafficLight(state?: unknown) {
@@ -39,7 +40,7 @@ function formatSeconds(value: unknown, digits = 1): string {
 }
 
 export function VACStatusDisplay({ intersectionId, liveStatus }: VACStatusDisplayProps) {
-  const { data, error, isLoading } = useSWR(
+  const { data, error, isLoading } = useSWR<IntersectionStatus>(
     intersectionId ? ["intersectionStatus", intersectionId] : null,
     () => getIntersectionStatus(intersectionId),
     {
@@ -47,7 +48,7 @@ export function VACStatusDisplay({ intersectionId, liveStatus }: VACStatusDispla
     }
   )
 
-  const status: any = liveStatus || data
+  const status: IntersectionStatus | null | undefined = liveStatus || data
 
   if (isLoading && !status) {
     return (
@@ -77,8 +78,11 @@ export function VACStatusDisplay({ intersectionId, liveStatus }: VACStatusDispla
     )
   }
 
-  const lanes: Record<string, any> = status?.lanes || {}
-  const laneIds = Object.keys(lanes).slice(0, 3)
+  const lanes: Record<string, LaneStatus> = status?.lanes || {}
+  const laneIds = Object.keys(lanes)
+
+  // Dynamic grid columns based on lane count
+  const gridCols = laneIds.length <= 2 ? "sm:grid-cols-2" : laneIds.length === 3 ? "sm:grid-cols-3" : `sm:grid-cols-${Math.min(laneIds.length, 4)}`
 
   return (
     <Card>
@@ -89,9 +93,9 @@ export function VACStatusDisplay({ intersectionId, liveStatus }: VACStatusDispla
         {laneIds.length === 0 ? (
           <p className="text-sm text-muted-foreground">No lane status available</p>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className={`grid grid-cols-1 gap-4 ${gridCols}`}>
             {/* Lane labels at top (desktop) */}
-            <div className="hidden sm:col-span-3 sm:grid sm:grid-cols-3 sm:gap-4">
+            <div className={`hidden sm:col-span-full sm:grid ${gridCols} sm:gap-4`}>
               {laneIds.map((laneId) => (
                 <div key={`label-${laneId}`} className="text-sm font-medium text-center">
                   {laneId}

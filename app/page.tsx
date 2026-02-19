@@ -10,13 +10,14 @@ import { VACStatusDisplay } from "@/components/dashboard/vac-status"
 import { listIntersections } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Spinner } from "@/components/ui/spinner"
-import type { IntersectionSummary } from "@/lib/types"
+import type { IntersectionSummary, IntersectionStatus } from "@/lib/types"
 import { CameraSourceManager } from "@/components/dashboard/camera-source-manager"
 import { VehicleSummary } from "@/components/dashboard/vehicle-summary"
 
 export default function DashboardPage() {
   const [selectedIntersection, setSelectedIntersection] = useState<string>("")
-  const [liveVacStatus, setLiveVacStatus] = useState<any | null>(null)
+  const [liveVacStatus, setLiveVacStatus] = useState<IntersectionStatus | null>(null)
+  const [liveLineCounts, setLiveLineCounts] = useState<Record<string, Record<string, number>> | null>(null)
   
   // Fetch list of intersections
   const { data: intersections, isLoading: isLoadingIntersections } = useSWR<IntersectionSummary[]>(
@@ -93,6 +94,7 @@ export default function DashboardPage() {
                   onFrame={(msg) => {
                     try {
                       if (msg?.vac_status) setLiveVacStatus(msg.vac_status)
+                      if (msg?.line_counts) setLiveLineCounts(msg.line_counts)
                     } catch (_) {}
                   }}
                 />
@@ -109,7 +111,7 @@ export default function DashboardPage() {
                   <CameraSourceManager intersectionId={selectedIntersection} />
                 </div>
                 <div className="h-full min-w-0">
-                  <VehicleSummary intersectionId={selectedIntersection} />
+                  <VehicleSummary intersectionId={selectedIntersection} liveLineCounts={liveLineCounts} />
                 </div>
               </div>
             </>

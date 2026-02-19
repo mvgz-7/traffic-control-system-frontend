@@ -30,8 +30,8 @@ export function Sidebar() {
               key={item.name}
               href={item.href}
               onClick={onNavigate}
-              className={cn(
-                "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition-colors duration-150 md:text-base border",
+                className={cn(
+                "flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition-colors duration-150 transform-gpu will-change-transform md:text-base border",
                 isActive
                   ? "bg-sidebar-accent text-sidebar-foreground border-primary/30 ring-1 ring-primary/20"
                   : "border-transparent text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground",

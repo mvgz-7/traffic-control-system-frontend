@@ -37,27 +37,43 @@ export function CameraHealthCard({ intersectionId }: CameraHealthCardProps) {
         <CardTitle>Camera Health</CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        {Object.entries(health).map(([cameraId, cameraHealth]) => (
-          <div key={cameraId} className="flex items-center justify-between p-3 bg-muted rounded">
-            <div className="flex items-center gap-2">
-              {cameraHealth.status === "healthy" ? (
-                <CheckCircle className="w-4 h-4 text-green-500" />
-              ) : (
-                <AlertCircle className="w-4 h-4 text-red-500" />
-              )}
-              <div>
-                <p className="text-sm font-medium">{cameraId}</p>
-                <p className="text-xs text-muted-foreground">
-                  {cameraHealth.fps?.toFixed(1) || "N/A"} FPS
-                  {cameraHealth.resolution && ` • ${cameraHealth.resolution[0]}x${cameraHealth.resolution[1]}`}
-                </p>
+        {Object.entries(health).map(([cameraId, cam]) => {
+          const isAlive = cam.alive
+          return (
+            <div key={cameraId} className="flex items-center justify-between p-3 bg-muted rounded">
+              <div className="flex items-center gap-2">
+                {isAlive ? (
+                  <CheckCircle className="w-4 h-4 text-green-500" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-red-500" />
+                )}
+                <div>
+                  <p className="text-sm font-medium">{cameraId}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {cam.fps_actual?.toFixed(1) ?? "0"} / {cam.fps_expected} FPS
+                    {cam.approach && ` • ${cam.approach}`}
+                    {cam.lanes?.length > 0 && ` • ${cam.lanes.join(", ")}`}
+                  </p>
+                  {cam.frames_dropped > 0 && (
+                    <p className="text-xs text-amber-500">
+                      {cam.frames_dropped} frames dropped
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="flex flex-col items-end gap-1">
+                <Badge variant={isAlive ? "default" : "destructive"}>
+                  {cam.status}
+                </Badge>
+                {cam.quality_warning && (
+                  <Badge variant="outline" className="text-xs text-amber-500 border-amber-500">
+                    Quality Warning
+                  </Badge>
+                )}
               </div>
             </div>
-            <Badge variant={cameraHealth.status === "healthy" ? "default" : "destructive"}>
-              {cameraHealth.status}
-            </Badge>
-          </div>
-        ))}
+          )
+        })}
       </CardContent>
     </Card>
   )

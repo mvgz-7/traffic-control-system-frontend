@@ -1,21 +1,67 @@
 // Type definitions for the traffic management system
+// Aligned with 3-lane independent VAC backend (February 2026)
 
-export type TrafficLightState = "GREEN" | "YELLOW" | "ALL_RED"
+export type TrafficLightState = "GREEN" | "YELLOW" | "ALL_RED" | "RED"
 
-export interface VACStatus {
-  phase: string
-  phase_name: string
+// ===== Per-lane status (matches backend LaneStatus) =====
+export interface LaneStatus {
+  lane_id: string
+  traffic_light_id: string
   state: TrafficLightState
-  elapsed?: number
-  gap?: number
+  elapsed: number
+  gap?: number | null
   min_green: number
   max_green: number
   max_gap: number
-  active_lanes: string[]
+  vehicles_this_green: number
+  vehicles_now: number
+  direction?: string | null
   decision?: {
     action: string
     reason: string
+    elapsed: number
+    gap: number
+  } | null
+  pending_request?: string | null
+  denied_reason?: string | null
+}
+
+// ===== Per-lane config (matches backend LaneConfig) =====
+export interface LaneConfig {
+  lane_id: string
+  traffic_light_id: string
+  max_gap: number
+  min_green: number
+  max_green: number
+  yellow_time: number
+  all_red_time: number
+}
+
+// ===== Partial config update (matches backend LaneConfigUpdate) =====
+export interface LaneConfigUpdate {
+  max_gap?: number
+  min_green?: number
+  max_green?: number
+  yellow_time?: number
+  all_red_time?: number
+}
+
+// ===== Full intersection status (matches backend IntersectionStatus) =====
+export interface IntersectionStatus {
+  intersection_id: string
+  lanes: Record<string, LaneStatus>
+  signal_display: Record<string, TrafficLightState>
+  safety_status: {
+    intersection_id: string
+    total_lanes: number
+    green_lanes: string[]
+    active_conflicts: [string, string][]
+    violation_count: number
+    all_red_time: number
+    lane_states: Record<string, string>
   }
+  update_count: number
+  last_update: number
 }
 
 export interface SignalDisplay {
@@ -38,24 +84,21 @@ export interface ControlResponse {
 export interface IntersectionSummary {
   id: string
   name: string
-  status: string
-  phase_count: number
+  lane_count: number
   processing_state: string
 }
 
-export interface IntersectionConfig {
-  max_gap: number
-  min_green: number
-  max_green: number
-  yellow_time: number
-  all_red_time: number
-}
-
 export interface CameraHealth {
-  status: "healthy" | "unhealthy"
-  fps?: number
-  last_frame?: number
-  resolution?: [number, number]
+  status: string
+  alive: boolean
+  fps_actual: number
+  fps_expected: number
+  frames_read: number
+  frames_dropped: number
+  time_since_last_frame: number
+  lanes: string[]
+  quality_warning: boolean
+  approach: string
 }
 
 export interface CameraHealthResponse {
@@ -70,20 +113,20 @@ export interface Detection {
   lane_id?: string
 }
 
+// ===== WebSocket video feed message (matches backend WS /video_feed) =====
 export interface VideoFrameMessage {
   type: "frame"
   frame: string
-  vac_status: VACStatus
+  vac_status: IntersectionStatus
   lane_counts: Record<string, number>
   fps: number
   camera_health: CameraHealthResponse
-  // Optional per-line, per-class counts: { line_id: { class_name: count } }
-  line_counts?: Record<string, Record<string, number>>
 }
 
+// ===== WebSocket status-only feed (matches backend WS /status_feed) =====
 export interface StatusMessage {
   type: "status"
-  vac_status: VACStatus
+  vac_status: IntersectionStatus
   camera_health: CameraHealthResponse
   signal_display: Record<string, TrafficLightState>
 }
@@ -121,14 +164,11 @@ export interface AppSettings {
   log_level: string
   model_path: string
   confidence_threshold: number
-  video_source: string
 }
 
 export interface CameraDevice {
-  id: string
+  id: string | number
   name: string
-  device_path?: string
-  type: "camera" | "rtsp" | "file"
 }
 
 export interface UploadedVideo {
@@ -146,14 +186,18 @@ export interface VideoSourcesResponse {
 }
 
 export interface SourceAssignmentResponse {
-  // Backend returns success, intersection_id, camera_id, new_source, message
-  // Keep a flexible shape for compatibility with both frontend and backend.
   success?: boolean
   message?: string
   intersection_id?: string
   camera_id?: string
   new_source?: string | number
-  // Convenience/legacy fields
   assigned_to?: string
   source_id?: string
+}
+
+// ===== Health metric data point (for historical charts) =====
+export interface HealthMetricPoint {
+  timestamp: number
+  value: number
+  status?: string
 }

@@ -8,24 +8,26 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { AlertCircle, CheckCircle2 } from "lucide-react"
+import { AlertCircle, CheckCircle2, ShieldAlert, Zap } from "lucide-react"
 import { toast } from "sonner"
 import {
   listIntersections,
-  getIntersectionConfig,
-  updateIntersectionConfig,
+  getLaneConfig,
+  updateLaneConfig,
   resetIntersection,
   getIntersectionStatus,
+  emergencyStop,
+  forceGreen,
 } from "@/lib/api"
-import type { IntersectionSummary, IntersectionConfig, VACStatus } from "@/lib/types"
+import type { IntersectionSummary, IntersectionStatus, LaneConfig, LaneConfigUpdate } from "@/lib/types"
 import { VideoFeedWebSocket } from "@/components/dashboard/video-feed"
 import { VehicleSummary } from "@/components/dashboard/vehicle-summary"
 
 export default function TrafficControlPage() {
   const [selectedId, setSelectedId] = useState("")
   const [isUpdating, setIsUpdating] = useState(false)
-  const [controlMode, setControlMode] = useState<"vac" | "fixed">("vac")
-  const [formData, setFormData] = useState<IntersectionConfig>({
+  const [selectedLane, setSelectedLane] = useState("")
+  const [formData, setFormData] = useState<LaneConfigUpdate>({
     max_gap: 3.0,
     min_green: 15.0,
     max_green: 60.0,
@@ -37,20 +39,22 @@ export default function TrafficControlPage() {
     refreshInterval: 5000,
   })
 
-  const { data: config } = useSWR<IntersectionConfig>(
-    selectedId ? [`config`, selectedId] : null,
-    selectedId ? () => getIntersectionConfig(selectedId) : null,
-    { refreshInterval: 2000 }
-  )
-
-  const { data: vacStatus } = useSWR<VACStatus>(
+  const { data: status } = useSWR<IntersectionStatus>(
     selectedId ? [`vac-status`, selectedId] : null,
     selectedId ? () => getIntersectionStatus(selectedId) : null,
     { refreshInterval: 500 }
   )
 
-  // Live frame metadata pushed from the WebSocket (frame messages)
+  // Fetch per-lane config when a lane is selected
+  const { data: laneConfig, mutate: mutateLaneConfig } = useSWR<LaneConfig>(
+    selectedId && selectedLane ? [`lane-config`, selectedId, selectedLane] : null,
+    selectedId && selectedLane ? () => getLaneConfig(selectedId, selectedLane) : null,
+    { refreshInterval: 5000 }
+  )
+
   const [liveFrame, setLiveFrame] = useState<any | null>(null)
+
+  const laneIds = status ? Object.keys(status.lanes) : []
 
   useEffect(() => {
     if (intersections && intersections.length > 0 && !selectedId) {
@@ -58,19 +62,33 @@ export default function TrafficControlPage() {
     }
   }, [intersections, selectedId])
 
+  // Auto-select first lane when intersection changes
   useEffect(() => {
-    if (config) {
-      setFormData(config)
+    if (laneIds.length > 0 && (!selectedLane || !laneIds.includes(selectedLane))) {
+      setSelectedLane(laneIds[0])
     }
-  }, [config])
+  }, [laneIds.join(","), selectedLane])
+
+  // Sync form data when lane config loads
+  useEffect(() => {
+    if (laneConfig) {
+      setFormData({
+        max_gap: laneConfig.max_gap,
+        min_green: laneConfig.min_green,
+        max_green: laneConfig.max_green,
+        yellow_time: laneConfig.yellow_time,
+        all_red_time: laneConfig.all_red_time,
+      })
+    }
+  }, [laneConfig])
 
   const handleUpdate = async () => {
-    if (!selectedId) return
-
+    if (!selectedId || !selectedLane) return
     setIsUpdating(true)
     try {
-      await updateIntersectionConfig(selectedId, formData)
-      toast.success("Configuration updated successfully")
+      await updateLaneConfig(selectedId, selectedLane, formData)
+      mutateLaneConfig()
+      toast.success(`Configuration updated for ${selectedLane}`)
     } catch (error) {
       toast.error("Failed to update configuration")
       console.error(error)
@@ -81,7 +99,6 @@ export default function TrafficControlPage() {
 
   const handleReset = async () => {
     if (!selectedId) return
-
     setIsUpdating(true)
     try {
       await resetIntersection(selectedId)
@@ -94,11 +111,37 @@ export default function TrafficControlPage() {
     }
   }
 
-  const handleInputChange = (key: keyof IntersectionConfig, value: number) => {
-    setFormData((prev) => ({ ...prev, [key]: value }))
+  const handleEmergencyStop = async () => {
+    if (!selectedId) return
+    setIsUpdating(true)
+    try {
+      await emergencyStop(selectedId)
+      toast.success("EMERGENCY STOP — All lanes forced RED")
+    } catch (error) {
+      toast.error("Failed to execute emergency stop")
+      console.error(error)
+    } finally {
+      setIsUpdating(false)
+    }
   }
 
-  const updateDisabled = isUpdating || controlMode === "fixed"
+  const handleForceGreen = async (laneId: string) => {
+    if (!selectedId) return
+    setIsUpdating(true)
+    try {
+      await forceGreen(selectedId, laneId)
+      toast.success(`Forced GREEN on ${laneId}`)
+    } catch (error) {
+      toast.error(`Failed to force green on ${laneId}`)
+      console.error(error)
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
+  const handleInputChange = (key: keyof LaneConfigUpdate, value: number) => {
+    setFormData((prev) => ({ ...prev, [key]: value }))
+  }
 
   const NumberField = ({
     label,
@@ -110,12 +153,12 @@ export default function TrafficControlPage() {
     field,
   }: {
     label: string
-    value: number
+    value: number | undefined
     min: number
     max: number
     step: number
     hint: string
-    field: keyof IntersectionConfig
+    field: keyof LaneConfigUpdate
   }) => {
     return (
       <div className="space-y-2">
@@ -134,7 +177,7 @@ export default function TrafficControlPage() {
               min={min}
               max={max}
               step={step}
-              disabled={updateDisabled}
+              disabled={isUpdating}
               className="h-9 bg-background border-border [appearance:auto] [&::-webkit-outer-spin-button]:opacity-100 [&::-webkit-inner-spin-button]:opacity-100"
             />
           </div>
@@ -153,7 +196,7 @@ export default function TrafficControlPage() {
           subtitle="Configure dynamic traffic signal parameters (VAC Algorithm)"
         />
         <div className="space-y-6 p-6">
-          {/* Intersection + Algorithm Selectors */}
+          {/* Intersection Selector + Emergency Stop */}
           <div className="grid gap-6 lg:grid-cols-2 items-start">
             <Card>
               <CardHeader>
@@ -178,236 +221,277 @@ export default function TrafficControlPage() {
               </CardContent>
             </Card>
 
-            <Card>
+            {/* Emergency Controls */}
+            <Card className="border-destructive/50">
               <CardHeader>
-                <CardTitle className="text-base sm:text-lg">Select Algorithm</CardTitle>
+                <CardTitle className="text-base sm:text-lg flex items-center gap-2 text-destructive">
+                  <ShieldAlert className="w-5 h-5" />
+                  Emergency Controls
+                </CardTitle>
               </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground mb-3">Control mode</p>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant={controlMode === "vac" ? "default" : "outline"}
-                    onClick={() => setControlMode("vac")}
-                  >
-                    VAC Algorithm
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive"
-                    onClick={() => setControlMode("fixed")}
-                  >
-                    Go back to Fixed Timing
-                  </Button>
-                </div>
+              <CardContent className="space-y-4">
+                <Button
+                  variant="destructive"
+                  className="w-full text-lg py-6 font-bold"
+                  onClick={handleEmergencyStop}
+                  disabled={isUpdating || !selectedId}
+                >
+                  <ShieldAlert className="w-5 h-5 mr-2" />
+                  EMERGENCY STOP — ALL RED
+                </Button>
+                <p className="text-xs text-muted-foreground">
+                  Forces all lanes to RED immediately. Use in case of emergency or system malfunction.
+                </p>
+
+                {/* Force Green per-lane */}
+                {laneIds.length > 0 && (
+                  <div className="border-t border-border pt-4">
+                    <p className="text-sm font-medium mb-3 flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-green-500" />
+                      Force Green (Manual Override)
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {laneIds.map((laneId) => (
+                        <Button
+                          key={laneId}
+                          size="sm"
+                          variant="outline"
+                          className="border-green-500 text-green-600 hover:bg-green-500/10"
+                          onClick={() => handleForceGreen(laneId)}
+                          disabled={isUpdating}
+                        >
+                          Force {laneId} GREEN
+                        </Button>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Manually override a specific lane to GREEN. Other conflicting lanes will be held RED.
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
 
-          {selectedId && vacStatus && (
+          {selectedId && status && (
             <>
-              {/* Current Status Card */}
+              {/* Current Per-Lane Status */}
               <Card>
                 <CardHeader>
-                  <CardTitle>Current VAC Status</CardTitle>
+                  <CardTitle>Current Lane Status</CardTitle>
                 </CardHeader>
-                <CardContent className="grid gap-4 md:grid-cols-4">
-                  <div>
-                    <p className="text-xs text-muted-foreground">Phase</p>
-                    <p className="text-lg font-semibold">
-                      {controlMode === "fixed" ? "Fixed Timing" : vacStatus.phase_name}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-xs text-muted-foreground">Signal</p>
-                    <div className="flex items-center gap-2">
-                      <div
-                        className={`w-4 h-4 rounded-full ${
-                          controlMode === "fixed"
-                            ? "bg-slate-400"
-                            : vacStatus.state === "GREEN"
-                              ? "bg-green-500"
-                              : vacStatus.state === "YELLOW"
-                                ? "bg-yellow-500"
-                                : "bg-red-500"
-                        }`}
-                      />
-                      <p className="text-lg font-semibold">
-                        {controlMode === "fixed" ? "FIXED" : vacStatus.state}
-                      </p>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Elapsed</p>
-                    <p className="text-lg font-semibold">
-                      {controlMode === "fixed" ? "—" : (vacStatus.elapsed != null ? `${vacStatus.elapsed.toFixed(1)}s` : '-')}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">Gap</p>
-                    <p className="text-lg font-semibold">
-                      {controlMode === "fixed" ? "—" : (vacStatus.gap != null ? `${vacStatus.gap.toFixed(2)}s` : '-')}
-                    </p>
+                <CardContent>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    {laneIds.map((laneId) => {
+                      const lane = status.lanes[laneId]
+                      if (!lane) return null
+                      const stateUpper = String(lane.state ?? "").toUpperCase()
+                      return (
+                        <div key={laneId} className="rounded-lg border p-4 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-sm">{laneId}</span>
+                            <Badge
+                              variant={stateUpper === "GREEN" ? "default" : stateUpper === "YELLOW" ? "secondary" : "destructive"}
+                            >
+                              {lane.state}
+                            </Badge>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            {/* Traffic light indicator */}
+                            <div className="w-10 p-1.5 bg-black rounded-md flex flex-col items-center gap-1.5">
+                              <div
+                                className={`w-6 h-6 rounded-full ${stateUpper === "ALL_RED" || stateUpper === "RED" ? "bg-red-500 ring-2 ring-red-400" : "bg-gray-700"}`}
+                                style={{ boxShadow: stateUpper === "ALL_RED" || stateUpper === "RED" ? "0 0 8px rgba(239,68,68,0.6)" : undefined }}
+                              />
+                              <div
+                                className={`w-6 h-6 rounded-full ${stateUpper === "YELLOW" ? "bg-yellow-400 ring-2 ring-yellow-300" : "bg-gray-700"}`}
+                                style={{ boxShadow: stateUpper === "YELLOW" ? "0 0 8px rgba(234,179,8,0.45)" : undefined }}
+                              />
+                              <div
+                                className={`w-6 h-6 rounded-full ${stateUpper === "GREEN" ? "bg-green-500 ring-2 ring-green-300" : "bg-gray-700"}`}
+                                style={{ boxShadow: stateUpper === "GREEN" ? "0 0 8px rgba(34,197,94,0.45)" : undefined }}
+                              />
+                            </div>
+                            <div className="space-y-1 flex-1">
+                              <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">Elapsed</span>
+                                <span className="font-medium">{typeof lane.elapsed === "number" ? `${lane.elapsed.toFixed(1)}s` : "-"}</span>
+                              </div>
+                              <div className="flex justify-between text-sm">
+                                <span className="text-muted-foreground">Gap</span>
+                                <span className="font-medium">{typeof lane.gap === "number" ? `${lane.gap.toFixed(2)}s` : "-"}</span>
+                              </div>
+                              {typeof lane.vehicles_this_green === "number" && (
+                                <div className="flex justify-between text-sm">
+                                  <span className="text-muted-foreground">Vehicles</span>
+                                  <span className="font-medium">{lane.vehicles_this_green}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 </CardContent>
-                <div className="px-6 pb-6">
-                  <Badge variant={controlMode === "vac" ? "default" : "secondary"}>
-                    {controlMode === "vac" ? "VAC Algorithm" : "Fixed Timing"}
-                  </Badge>
-                </div>
               </Card>
 
-              {controlMode === "vac" ? (
-                <div className="grid gap-6 lg:grid-cols-[420px_1fr]">
-                  {/* Parameters */}
-                  <Card className="w-full">
-                    <CardHeader>
-                      <CardTitle>VAC Algorithm Parameters</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-6">
-                      <NumberField
-                        label="Max Gap (seconds)"
-                        value={formData.max_gap}
-                        min={1}
-                        max={10}
-                        step={0.1}
-                        field="max_gap"
-                        hint="Terminate green if no vehicle detected for this duration"
-                      />
-
-                      <NumberField
-                        label="Min Green (seconds)"
-                        value={formData.min_green}
-                        min={5}
-                        max={60}
-                        step={1}
-                        field="min_green"
-                        hint="Minimum duration for green phase"
-                      />
-
-                      <NumberField
-                        label="Max Green (seconds)"
-                        value={formData.max_green}
-                        min={20}
-                        max={120}
-                        step={1}
-                        field="max_green"
-                        hint="Maximum duration for green phase (prevents lane starvation)"
-                      />
-
-                      <NumberField
-                        label="Yellow Time (seconds)"
-                        value={formData.yellow_time}
-                        min={1}
-                        max={5}
-                        step={0.1}
-                        field="yellow_time"
-                        hint="Duration of yellow light phase"
-                      />
-
-                      <NumberField
-                        label="All Red Time (seconds)"
-                        value={formData.all_red_time}
-                        min={0.5}
-                        max={5}
-                        step={0.1}
-                        field="all_red_time"
-                        hint="Clearance interval where all lights are red"
-                      />
-
-                      <div className="flex gap-2 pt-2">
-                        <Button onClick={handleUpdate} disabled={updateDisabled} className="flex-1">
-                          {isUpdating ? "Updating..." : "Save Changes"}
-                        </Button>
-                        <Button
-                          onClick={handleReset}
-                          disabled={updateDisabled}
-                          variant="destructive"
-                          className="flex-1"
-                        >
-                          {isUpdating ? "Resetting..." : "Reset Controller"}
-                        </Button>
+              {/* Per-Lane Configuration Editor */}
+              <div className="grid gap-6 lg:grid-cols-[420px_1fr]">
+                <Card className="w-full">
+                  <CardHeader>
+                    <CardTitle>Lane Configuration</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
+                    {/* Lane tab selector */}
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-2">Select lane to configure</p>
+                      <div className="flex flex-wrap gap-2">
+                        {laneIds.map((laneId) => (
+                          <Button
+                            key={laneId}
+                            size="sm"
+                            variant={selectedLane === laneId ? "default" : "outline"}
+                            onClick={() => setSelectedLane(laneId)}
+                          >
+                            {laneId}
+                          </Button>
+                        ))}
                       </div>
-                    </CardContent>
-                  </Card>
+                    </div>
 
-                  {/* Guidelines */}
-                  <Card>
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <AlertCircle className="w-5 h-5" />
-                        Guidelines
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <div className="bg-muted p-3 rounded-lg">
-                        <p className="text-sm font-semibold flex items-center gap-2">
-                          <CheckCircle2 className="w-4 h-4 text-green-500" />
-                          Typical Traffic Settings
-                        </p>
-                        <ul className="text-xs text-muted-foreground mt-2 space-y-1 ml-6">
-                          <li>• Max Gap: 2-4 seconds (vehicle detection timeout)</li>
-                          <li>• Min Green: 10-20 seconds (pedestrian safety)</li>
-                          <li>• Max Green: 45-90 seconds (prevents lane starvation)</li>
-                          <li>• Yellow: 3-4 seconds (standard traffic rules)</li>
-                          <li>• All Red: 1-2 seconds (safety clearance)</li>
-                        </ul>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-              ) : (
-                <div className="grid gap-6 lg:grid-cols-2">
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>VAC Algorithm Parameters</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <p className="text-sm text-muted-foreground">
-                        Fixed Timing mode selected. VAC parameters are unavailable.
+                    {selectedLane && (
+                      <>
+                        <div className="border-t pt-4">
+                          <p className="text-sm font-medium mb-1">Editing: <span className="text-primary">{selectedLane}</span></p>
+                          {laneConfig && (
+                            <p className="text-xs text-muted-foreground">Traffic light: {laneConfig.traffic_light_id}</p>
+                          )}
+                        </div>
+
+                        <NumberField
+                          label="Max Gap (seconds)"
+                          value={formData.max_gap}
+                          min={1}
+                          max={999}
+                          step={0.1}
+                          field="max_gap"
+                          hint="Terminate green if no vehicle detected for this duration. 999 = fixed-time mode."
+                        />
+
+                        <NumberField
+                          label="Min Green (seconds)"
+                          value={formData.min_green}
+                          min={5}
+                          max={60}
+                          step={1}
+                          field="min_green"
+                          hint="Minimum duration for green phase"
+                        />
+
+                        <NumberField
+                          label="Max Green (seconds)"
+                          value={formData.max_green}
+                          min={20}
+                          max={120}
+                          step={1}
+                          field="max_green"
+                          hint="Maximum duration for green phase (prevents lane starvation)"
+                        />
+
+                        <NumberField
+                          label="Yellow Time (seconds)"
+                          value={formData.yellow_time}
+                          min={1}
+                          max={5}
+                          step={0.1}
+                          field="yellow_time"
+                          hint="Duration of yellow light phase"
+                        />
+
+                        <NumberField
+                          label="All Red Time (seconds)"
+                          value={formData.all_red_time}
+                          min={0.5}
+                          max={5}
+                          step={0.1}
+                          field="all_red_time"
+                          hint="Clearance interval where all lights are red"
+                        />
+
+                        <div className="flex gap-2 pt-2">
+                          <Button onClick={handleUpdate} disabled={isUpdating} className="flex-1">
+                            {isUpdating ? "Updating..." : `Save ${selectedLane}`}
+                          </Button>
+                          <Button
+                            onClick={handleReset}
+                            disabled={isUpdating}
+                            variant="destructive"
+                            className="flex-1"
+                          >
+                            {isUpdating ? "Resetting..." : "Reset All Lanes"}
+                          </Button>
+                        </div>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Guidelines */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <AlertCircle className="w-5 h-5" />
+                      Guidelines
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="bg-muted p-3 rounded-lg">
+                      <p className="text-sm font-semibold flex items-center gap-2">
+                        <CheckCircle2 className="w-4 h-4 text-green-500" />
+                        Typical Traffic Settings
                       </p>
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <Input disabled value={`Max Gap: ${formData.max_gap}`} />
-                        <Input disabled value={`Min Green: ${formData.min_green}`} />
-                        <Input disabled value={`Max Green: ${formData.max_green}`} />
-                        <Input disabled value={`Yellow: ${formData.yellow_time}`} />
-                        <Input disabled value={`All Red: ${formData.all_red_time}`} />
-                      </div>
-                      <div className="flex gap-2 pt-2">
-                        <Button disabled className="flex-1">
-                          Save Changes
-                        </Button>
-                        <Button disabled variant="destructive" className="flex-1">
-                          Reset Controller
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardHeader>
-                      <CardTitle>Guidelines</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-sm text-muted-foreground">
-                        In Fixed Timing mode, signals follow a pre-defined schedule and do not adapt to live vehicle gaps.
+                      <ul className="text-xs text-muted-foreground mt-2 space-y-1 ml-6">
+                        <li>Max Gap: 2-4 seconds (vehicle detection timeout)</li>
+                        <li>Min Green: 10-20 seconds (pedestrian safety)</li>
+                        <li>Max Green: 45-90 seconds (prevents lane starvation)</li>
+                        <li>Yellow: 3-4 seconds (standard traffic rules)</li>
+                        <li>All Red: 1-2 seconds (safety clearance)</li>
+                      </ul>
+                    </div>
+                    <div className="bg-muted p-3 rounded-lg">
+                      <p className="text-sm font-semibold flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 text-yellow-500" />
+                        Fixed-Time Mode
                       </p>
-                    </CardContent>
-                  </Card>
-                </div>
-              )}
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Set <span className="font-medium">Max Gap = 999</span> to make a lane run in fixed-time mode.
+                        The gap will never be exceeded, so the lane always runs to Max Green.
+                      </p>
+                    </div>
+                    <div className="bg-muted p-3 rounded-lg">
+                      <p className="text-sm font-semibold flex items-center gap-2">
+                        <ShieldAlert className="w-4 h-4 text-red-500" />
+                        Safety
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        The Safety Coordinator prevents conflicting lanes from being GREEN simultaneously.
+                        All-Red intervals are enforced between transitions.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
               {/* Live video feed + vehicle summary */}
               <div className="grid gap-6 lg:grid-cols-2">
                 <VideoFeedWebSocket
                   intersectionId={selectedId}
                   onFrame={(msg: any) => {
-                    // store latest metadata for other components
                     setLiveFrame(msg)
                   }}
                 />
-
-                <VehicleSummary intersectionId={selectedId} liveLineCounts={liveFrame?.line_counts ?? null} />
+                <VehicleSummary intersectionId={selectedId} />
               </div>
             </>
           )}

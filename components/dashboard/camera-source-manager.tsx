@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Upload, Camera } from "lucide-react"
-import { listCameras, listUploadedVideos, uploadVideo, assignSourceToCamera, getCameraHealth } from "@/lib/api"
+import { listCameras, listUploadedVideos, uploadVideo, assignSourceToCamera, getCameraHealth, getIntersectionLanes } from "@/lib/api"
 import { toast } from "sonner"
 import type { UploadedVideo, CameraDevice } from "@/lib/types"
 
@@ -35,6 +35,13 @@ export function CameraSourceManager({ intersectionId }: CameraSourceManagerProps
   const { data: intersectionCameras, mutate: mutateIntersectionCameras } = useSWR(
     intersectionId ? [`intersection-cameras`, intersectionId] : null,
     intersectionId ? () => getCameraHealth(intersectionId) : null,
+    { revalidateOnFocus: false, revalidateOnReconnect: false }
+  )
+
+  // Dynamically discover camera slots from the backend
+  const { data: lanesInfo } = useSWR(
+    intersectionId ? [`intersection-lanes`, intersectionId] : null,
+    intersectionId ? () => getIntersectionLanes(intersectionId) : null,
     { revalidateOnFocus: false, revalidateOnReconnect: false }
   )
 
@@ -157,9 +164,12 @@ export function CameraSourceManager({ intersectionId }: CameraSourceManagerProps
             {/* Quick 2-slot assign for camera_north and camera_south */}
             <div className="grid grid-cols-1 gap-3">
               {(() => {
-                const defaultSlots = ['camera_north', 'camera_south']
-                const gracelandSlots = ['camera_lane1', 'camera_lane2', 'camera_overview']
-                const slots = intersectionId === 'graceland' ? gracelandSlots : defaultSlots
+                // Use dynamic camera IDs from backend lane info, fall back to camera health keys
+                const slots: string[] = lanesInfo?.lane_to_camera
+                  ? [...new Set(Object.values(lanesInfo.lane_to_camera) as string[])]
+                  : intersectionCameras
+                    ? Object.keys(intersectionCameras)
+                    : []
                 return slots.map((slot) => (
                   <div key={slot} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
                     <div className="font-medium sm:w-32 min-w-0">{slot}</div>
@@ -208,34 +218,46 @@ export function CameraSourceManager({ intersectionId }: CameraSourceManagerProps
 
           {intersectionCameras ? (
             <div className="grid gap-2">
-              {Object.keys(intersectionCameras).map((camId) => {
-                const status = intersectionCameras[camId]?.status
-                const s = status?.toString().toLowerCase() ?? ""
-                const isRunning = ["running", "online", "active", "connected"].includes(s)
+              {(() => {
+                // Only show lane cameras (exclude overview-only cameras)
+                const laneCamIds: string[] = lanesInfo?.lane_to_camera
+                  ? [...new Set(Object.values(lanesInfo.lane_to_camera) as string[])]
+                  : Object.keys(intersectionCameras).filter(
+                      (id) => intersectionCameras[id]?.lanes?.length > 0
+                    )
+                return laneCamIds.map((camId) => {
+                  const cam = intersectionCameras[camId]
+                  const status = cam?.status
+                  const s = status?.toString().toLowerCase() ?? ""
+                  const isRunning = s === "running"
 
-                return (
-                  <div
-                    key={camId}
-                    className={
-                      "flex items-center justify-between gap-3 rounded-lg border px-3 py-2 " +
-                      (isRunning ? "border-primary/30 bg-primary/5" : "border-destructive/30 bg-destructive/5")
-                    }
-                  >
-                    <p className="font-medium text-sm">{camId}</p>
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={
-                          "inline-block h-2 w-2 rounded-full " +
-                          (isRunning ? "bg-[color:var(--status-active)]" : "bg-destructive")
-                        }
-                      />
-                      <Badge variant={isRunning ? "success" : "destructive"} className="text-xs">
-                        {status ?? "unknown"}
-                      </Badge>
+                  return (
+                    <div
+                      key={camId}
+                      className={
+                        "flex items-center justify-between gap-3 rounded-lg border px-3 py-2 " +
+                        (isRunning ? "border-primary/30 bg-primary/5" : "border-destructive/30 bg-destructive/5")
+                      }
+                    >
+                      <p className="font-medium text-sm">{camId}</p>
+                      <div className="flex items-center gap-2">
+                        {cam?.approach && (
+                          <span className="text-xs text-muted-foreground">{cam.approach}</span>
+                        )}
+                        <span
+                          className={
+                            "inline-block h-2 w-2 rounded-full " +
+                            (isRunning ? "bg-[color:var(--status-active)]" : "bg-destructive")
+                          }
+                        />
+                        <Badge variant={isRunning ? "success" : "destructive"} className="text-xs">
+                          {status ?? "unknown"}
+                        </Badge>
+                      </div>
                     </div>
-                  </div>
-                )
-              })}
+                  )
+                })
+              })()}
             </div>
           ) : (
             <p className="text-xs text-muted-foreground">Loading camera slots...</p>

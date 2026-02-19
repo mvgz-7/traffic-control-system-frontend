@@ -7,8 +7,8 @@ import { Header } from "@/components/layout/header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { listIntersections, getIntersectionStatus, getVideoStreamUrl } from "@/lib/api"
-import type { IntersectionSummary, VACStatus, VideoFrameMessage } from "@/lib/types"
+import { listIntersections, getIntersectionStatus, getStatusStreamUrl } from "@/lib/api"
+import type { IntersectionSummary, IntersectionStatus, LaneStatus, StatusMessage } from "@/lib/types"
 import {
   ResponsiveContainer,
   LineChart,
@@ -17,8 +17,6 @@ import {
   YAxis,
   Tooltip,
   CartesianGrid,
-  AreaChart,
-  Area,
 } from "recharts"
 
 type AnalyticsPoint = {
@@ -46,6 +44,14 @@ function downloadJson(filename: string, data: unknown) {
   URL.revokeObjectURL(url)
 }
 
+/** Pick a representative lane — prefer GREEN lane, fallback to first */
+function getRepLane(status: IntersectionStatus): LaneStatus | null {
+  const lanes = status.lanes || {}
+  const entries = Object.values(lanes)
+  if (entries.length === 0) return null
+  return entries.find((l) => String(l.state ?? "").toUpperCase() === "GREEN") || entries[0]
+}
+
 export default function AnalyticsPage() {
   const [selectedId, setSelectedId] = useState("")
   const [history, setHistory] = useState<AnalyticsPoint[]>([])
@@ -56,45 +62,47 @@ export default function AnalyticsPage() {
     refreshInterval: 5000,
   })
 
-  const { data: vacStatus } = useSWR<VACStatus>(
+  const { data: intersectionStatus } = useSWR<IntersectionStatus>(
     selectedId ? [`vac-status`, selectedId] : null,
     selectedId ? () => getIntersectionStatus(selectedId) : null,
     { refreshInterval: 2000 }
   )
 
-  // Lightweight-ish live vehicle counts (lane_counts) for the table.
-  // Note: backend currently publishes lane_counts on the video_feed stream.
+  // Use the lighter status_feed WebSocket instead of video_feed
   useEffect(() => {
     if (!selectedId) return
 
     let cancelled = false
-    const ws = new WebSocket(getVideoStreamUrl(selectedId))
+    const ws = new WebSocket(getStatusStreamUrl(selectedId))
 
     ws.onmessage = (event) => {
       if (cancelled) return
       try {
-        const msg = JSON.parse(event.data) as Partial<VideoFrameMessage>
-        if (msg.type === "frame" && msg.lane_counts && typeof msg.lane_counts === "object") {
-          setLaneCounts(msg.lane_counts as Record<string, number>)
-          setLaneCountsUpdatedAt(Date.now())
+        const msg = JSON.parse(event.data) as Partial<StatusMessage>
+        if (msg.type === "status" && msg.vac_status) {
+          // Extract lane counts from the status if available
+          const lanes = msg.vac_status.lanes || {}
+          const counts: Record<string, number> = {}
+          for (const [laneId, lane] of Object.entries(lanes)) {
+            if (typeof (lane as any).vehicles_this_green === "number") {
+              counts[laneId] = (lane as any).vehicles_this_green
+            }
+          }
+          if (Object.keys(counts).length > 0) {
+            setLaneCounts(counts)
+            setLaneCountsUpdatedAt(Date.now())
+          }
         }
       } catch (_) {
         // ignore
       }
     }
 
-    ws.onerror = () => {
-      if (cancelled) return
-      // Keep quiet; WS is optional for the table.
-    }
+    ws.onerror = () => {}
 
     return () => {
       cancelled = true
-      try {
-        ws.close()
-      } catch (_) {
-        // ignore
-      }
+      try { ws.close() } catch (_) {}
     }
   }, [selectedId])
 
@@ -115,30 +123,24 @@ export default function AnalyticsPage() {
   }, [intersections, selectedId])
 
   useEffect(() => {
-    // Reset history when intersection changes
     setHistory([])
   }, [selectedId])
 
   useEffect(() => {
-    if (!vacStatus) return
+    if (!intersectionStatus) return
     const ts = Date.now()
+    const rep = getRepLane(intersectionStatus)
 
-    // Derive a representative lane status (prefer currently GREEN lane)
-    const lanes = (vacStatus as any).lanes || {}
-    const laneValues = Object.values(lanes)
-    let rep: any = null
-    if (laneValues.length > 0) {
-      rep = laneValues.find((l: any) => (l.state ?? '').toUpperCase() === 'GREEN') || laneValues[0]
-    }
+    const elapsed = rep ? Number(rep.elapsed ?? 0) : 0
+    const gap = rep ? Number(rep.gap ?? 0) : 0
+    const maxGreen = rep ? Number(rep.max_green ?? 0) : 0
+    const state = rep ? String(rep.state ?? "") : ""
 
-    const elapsed = rep ? Number(rep.elapsed ?? 0) : Number((vacStatus as any).elapsed ?? 0)
-    const gap = rep ? Number(rep.gap ?? 0) : Number((vacStatus as any).gap ?? 0)
-    const maxGreen = rep ? Number(rep.max_green ?? 0) : Number((vacStatus as any).max_green ?? 0)
-    const state = rep ? String(rep.state ?? '') : String((vacStatus as any).state ?? '')
-
-    const stateUpper = String(state ?? '').toUpperCase()
+    const stateUpper = state.toUpperCase()
     const stateValue = stateUpper === "GREEN" ? 1 : stateUpper === "YELLOW" ? 0.5 : 0
     const utilization = maxGreen > 0 ? Math.min((elapsed / maxGreen) * 100, 100) : 0
+
+    const laneIds = Object.keys(intersectionStatus.lanes || {})
 
     const point: AnalyticsPoint = {
       ts,
@@ -146,30 +148,31 @@ export default function AnalyticsPage() {
       elapsed: Number(elapsed),
       gap: Number(gap),
       utilization,
-      state: String(state ?? ""),
+      state,
       stateValue,
-      activeLanes: Array.isArray((vacStatus as any).active_lanes) ? (vacStatus as any).active_lanes.length : Object.keys(lanes).length,
+      activeLanes: laneIds.filter((id) => {
+        const s = String(intersectionStatus.lanes[id]?.state ?? "").toUpperCase()
+        return s === "GREEN" || s === "YELLOW"
+      }).length,
     }
 
     setHistory((prev) => {
       const next = [...prev, point]
-      // Keep last ~10 minutes at 2s sampling (max 300 points)
       return next.length > 300 ? next.slice(next.length - 300) : next
     })
-  }, [vacStatus])
+  }, [intersectionStatus])
 
   const report = useMemo(() => {
     return {
       generated_at: new Date().toISOString(),
       intersection_id: selectedId,
-      latest_status: vacStatus ?? null,
+      latest_status: intersectionStatus ?? null,
       series: history,
     }
-  }, [history, selectedId, vacStatus])
-  // Representative lane/status helper (prefer currently GREEN lane)
-  const lanesMap = (vacStatus as any)?.lanes ?? {}
-  const laneValues = Object.values(lanesMap)
-  const rep: any = laneValues.length > 0 ? (laneValues.find((l: any) => (String(l.state ?? '').toUpperCase() === 'GREEN')) || laneValues[0]) : null
+  }, [history, selectedId, intersectionStatus])
+
+  const rep = intersectionStatus ? getRepLane(intersectionStatus) : null
+  const laneIds = intersectionStatus ? Object.keys(intersectionStatus.lanes || {}) : []
 
   return (
     <div className="min-h-screen bg-background">
@@ -219,7 +222,7 @@ export default function AnalyticsPage() {
             </CardContent>
           </Card>
 
-          {selectedId && vacStatus && (
+          {selectedId && intersectionStatus && (
             <>
               {/* Charts */}
               <div className="grid gap-6 lg:grid-cols-2">
@@ -245,127 +248,127 @@ export default function AnalyticsPage() {
                 </Card>
 
                 {/* Vehicle Summary Table (lane counts) */}
-              <Card>
-                <CardHeader>
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <CardTitle>Vehicle Summary</CardTitle>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="text-xs">
-                        Total: {laneCountTotal}
-                      </Badge>
-                      <Badge variant="outline" className="text-xs">
-                        Updated: {laneCountsUpdatedAt ? new Date(laneCountsUpdatedAt).toLocaleTimeString() : "—"}
-                      </Badge>
+                <Card>
+                  <CardHeader>
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <CardTitle>Vehicle Summary</CardTitle>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">
+                          Total: {laneCountTotal}
+                        </Badge>
+                        <Badge variant="outline" className="text-xs">
+                          Updated: {laneCountsUpdatedAt ? new Date(laneCountsUpdatedAt).toLocaleTimeString() : "—"}
+                        </Badge>
+                      </div>
                     </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b">
-                          <th className="py-2 text-left font-medium">Lane</th>
-                          <th className="py-2 text-right font-medium">Count</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {laneCountRows.length > 0 ? (
-                          laneCountRows.map((row) => (
-                            <tr key={row.lane} className="border-b last:border-b-0">
-                              <td className="py-2 pr-4">
-                                <span className="inline-flex rounded-md bg-muted px-2 py-1 text-xs">
-                                  {row.lane}
-                                </span>
-                              </td>
-                              <td className="py-2 text-right tabular-nums font-semibold">{row.count}</td>
-                            </tr>
-                          ))
-                        ) : (
-                          <tr>
-                            <td className="py-3 text-muted-foreground" colSpan={2}>
-                              No lane count data yet. Start processing and open the dashboard stream.
-                            </td>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="py-2 text-left font-medium">Lane</th>
+                            <th className="py-2 text-right font-medium">Count</th>
                           </tr>
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <p className="mt-3 text-xs text-muted-foreground">
-                    This table uses live <span className="font-medium">lane_counts</span> from the <span className="font-medium">video_feed</span> WebSocket.
-                  </p>
-                </CardContent>
-              </Card>
+                        </thead>
+                        <tbody>
+                          {laneCountRows.length > 0 ? (
+                            laneCountRows.map((row) => (
+                              <tr key={row.lane} className="border-b last:border-b-0">
+                                <td className="py-2 pr-4">
+                                  <span className="inline-flex rounded-md bg-muted px-2 py-1 text-xs">
+                                    {row.lane}
+                                  </span>
+                                </td>
+                                <td className="py-2 text-right tabular-nums font-semibold">{row.count}</td>
+                              </tr>
+                            ))
+                          ) : (
+                            <tr>
+                              <td className="py-3 text-muted-foreground" colSpan={2}>
+                                No lane count data yet. Start processing to see vehicle counts per lane.
+                              </td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="mt-3 text-xs text-muted-foreground">
+                      Uses lightweight <span className="font-medium">status_feed</span> WebSocket (no video overhead).
+                    </p>
+                  </CardContent>
+                </Card>
               </div>
 
-              
-
-              {/* Two-column layout: left = VAC Status + Active Lanes, right = Green Utilization + Decision + Min/Max info */}
+              {/* Per-lane VAC Status + Active Lanes / Right = Green Utilization + Decision + Timing */}
               <div className="grid gap-6 md:grid-cols-2">
                 {/* Left column */}
                 <div className="space-y-6">
                   <Card>
                     <CardHeader>
-                      <CardTitle>VAC Status</CardTitle>
+                      <CardTitle>Per-Lane VAC Status</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      <div className="grid gap-3 md:grid-cols-2 items-start">
-                        <div className="flex items-center gap-4">
-                          {(() => {
-                            const stateUpper = String(rep?.state ?? vacStatus?.state ?? "").toUpperCase()
-                            const redOn = stateUpper === "ALL_RED" || stateUpper === "RED"
-                            const yellowOn = stateUpper === "YELLOW"
-                            const greenOn = stateUpper === "GREEN"
-                            return (
-                              <div className="w-14 p-2 bg-black rounded-md flex flex-col items-center gap-2">
+                      <div className="grid gap-3">
+                        {laneIds.map((laneId) => {
+                          const lane = intersectionStatus.lanes[laneId]
+                          if (!lane) return null
+                          const stateUpper = String(lane.state ?? "").toUpperCase()
+                          const redOn = stateUpper === "ALL_RED" || stateUpper === "RED"
+                          const yellowOn = stateUpper === "YELLOW"
+                          const greenOn = stateUpper === "GREEN"
+                          return (
+                            <div key={laneId} className="flex items-center gap-4 p-3 rounded-lg border">
+                              <div className="w-10 p-1.5 bg-black rounded-md flex flex-col items-center gap-1.5">
                                 <div
-                                  className={`w-8 h-8 rounded-full ${redOn ? "bg-red-500 ring-4 ring-red-400" : "bg-gray-700"}`}
-                                  style={{ boxShadow: redOn ? "0 0 10px rgba(239,68,68,0.6)" : undefined }}
+                                  className={`w-6 h-6 rounded-full ${redOn ? "bg-red-500 ring-2 ring-red-400" : "bg-gray-700"}`}
+                                  style={{ boxShadow: redOn ? "0 0 8px rgba(239,68,68,0.6)" : undefined }}
                                 />
                                 <div
-                                  className={`w-8 h-8 rounded-full ${yellowOn ? "bg-yellow-400 ring-4 ring-yellow-300" : "bg-gray-700"}`}
-                                  style={{ boxShadow: yellowOn ? "0 0 10px rgba(234,179,8,0.45)" : undefined }}
+                                  className={`w-6 h-6 rounded-full ${yellowOn ? "bg-yellow-400 ring-2 ring-yellow-300" : "bg-gray-700"}`}
+                                  style={{ boxShadow: yellowOn ? "0 0 8px rgba(234,179,8,0.45)" : undefined }}
                                 />
                                 <div
-                                  className={`w-8 h-8 rounded-full ${greenOn ? "bg-green-500 ring-4 ring-green-300" : "bg-gray-700"}`}
-                                  style={{ boxShadow: greenOn ? "0 0 10px rgba(34,197,94,0.45)" : undefined }}
+                                  className={`w-6 h-6 rounded-full ${greenOn ? "bg-green-500 ring-2 ring-green-300" : "bg-gray-700"}`}
+                                  style={{ boxShadow: greenOn ? "0 0 8px rgba(34,197,94,0.45)" : undefined }}
                                 />
                               </div>
-                            )
-                          })()}
 
-                          <div className="space-y-2">
-                            <div>
-                              <p className="text-sm text-muted-foreground">Phase</p>
-                              <p className="text-lg font-semibold">{vacStatus?.phase_name ?? rep?.phase_name ?? '-'}</p>
+                              <div className="flex-1 space-y-1">
+                                <div className="flex items-center justify-between">
+                                  <span className="font-semibold text-sm">{laneId}</span>
+                                  <Badge variant={greenOn ? "default" : stateUpper === "YELLOW" ? "secondary" : "destructive"}>
+                                    {lane.state}
+                                  </Badge>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                  <div className="flex justify-between p-1.5 bg-muted rounded">
+                                    <span className="text-muted-foreground">Elapsed</span>
+                                    <span className="font-medium">{typeof lane.elapsed === "number" ? `${lane.elapsed.toFixed(1)}s` : "-"}</span>
+                                  </div>
+                                  <div className="flex justify-between p-1.5 bg-muted rounded">
+                                    <span className="text-muted-foreground">Gap</span>
+                                    <span className="font-medium">{typeof lane.gap === "number" ? `${lane.gap.toFixed(2)}s` : "-"}</span>
+                                  </div>
+                                </div>
+                              </div>
                             </div>
-                            <div>
-                              <p className="text-sm text-muted-foreground">State</p>
-                              <p className="text-lg font-semibold">{(rep?.state ?? vacStatus?.state ?? '-')}</p>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="space-y-3">
-                          <div className="flex items-center justify-between p-3 bg-muted rounded">
-                            <span className="text-sm">Elapsed</span>
-                            <span className="font-semibold">{typeof rep?.elapsed === 'number' ? `${rep.elapsed.toFixed(1)}s` : typeof vacStatus?.elapsed === 'number' ? `${vacStatus.elapsed.toFixed(1)}s` : '-'}</span>
-                          </div>
-                          <div className="flex items-center justify-between p-3 bg-muted rounded">
-                            <span className="text-sm">Gap</span>
-                            <span className="font-semibold">{typeof rep?.gap === 'number' ? `${rep.gap.toFixed(2)}s` : typeof vacStatus?.gap === 'number' ? `${vacStatus.gap.toFixed(2)}s` : '-'}</span>
-                          </div>
-                        </div>
+                          )
+                        })}
                       </div>
 
                       <div className="pt-2 border-t">
                         <p className="text-sm text-muted-foreground mb-2">Active Lanes</p>
                         <div className="flex flex-wrap gap-2">
-                          {vacStatus.active_lanes && vacStatus.active_lanes.length > 0 ? (
-                            vacStatus.active_lanes.map((lane) => (
-                              <Badge key={lane} variant="default">
-                                {lane}
-                              </Badge>
+                          {laneIds.filter((id) => {
+                            const s = String(intersectionStatus.lanes[id]?.state ?? "").toUpperCase()
+                            return s === "GREEN" || s === "YELLOW"
+                          }).length > 0 ? (
+                            laneIds.filter((id) => {
+                              const s = String(intersectionStatus.lanes[id]?.state ?? "").toUpperCase()
+                              return s === "GREEN" || s === "YELLOW"
+                            }).map((laneId) => (
+                              <Badge key={laneId} variant="default">{laneId}</Badge>
                             ))
                           ) : (
                             <p className="text-xs text-muted-foreground">No active lanes</p>
@@ -387,17 +390,18 @@ export default function AnalyticsPage() {
                         <div
                           className="bg-green-500 h-2 rounded-full transition-all duration-300"
                           style={{
-                            width: `${Math.min(((rep?.elapsed ?? vacStatus?.elapsed ?? 0) / (rep?.max_green ?? vacStatus?.max_green ?? 1)) * 100, 100)}%`,
+                            width: `${Math.min(((rep?.elapsed ?? 0) / (rep?.max_green ?? 1)) * 100, 100)}%`,
                           }}
                         />
                       </div>
                       <p className="text-xs text-muted-foreground mt-2">
-                        {typeof rep?.elapsed === 'number' ? rep.elapsed.toFixed(1) : typeof vacStatus?.elapsed === 'number' ? vacStatus.elapsed.toFixed(1) : '-'}s / {typeof rep?.max_green === 'number' ? rep.max_green.toFixed(1) : typeof vacStatus?.max_green === 'number' ? vacStatus.max_green.toFixed(1) : '-'}s
+                        {typeof rep?.elapsed === "number" ? rep.elapsed.toFixed(1) : "-"}s / {typeof rep?.max_green === "number" ? rep.max_green.toFixed(1) : "-"}s
+                        <span className="ml-2 text-muted-foreground/70">(representative GREEN lane)</span>
                       </p>
                     </CardContent>
                   </Card>
 
-                  {(rep?.decision || (vacStatus as any)?.decision) && (
+                  {rep?.decision && (
                     <Card>
                       <CardHeader>
                         <CardTitle>Current Algorithm Decision</CardTitle>
@@ -406,11 +410,11 @@ export default function AnalyticsPage() {
                         <div className="bg-muted p-4 rounded-lg space-y-2">
                           <div>
                             <p className="text-xs text-muted-foreground">Action</p>
-                            <p className="text-lg font-semibold">{(rep?.decision ?? (vacStatus as any).decision)?.action}</p>
+                            <p className="text-lg font-semibold">{rep.decision.action}</p>
                           </div>
                           <div>
                             <p className="text-xs text-muted-foreground">Reason</p>
-                            <p className="text-sm">{(rep?.decision ?? (vacStatus as any).decision)?.reason}</p>
+                            <p className="text-sm">{rep.decision.reason}</p>
                           </div>
                         </div>
                       </CardContent>
@@ -425,11 +429,11 @@ export default function AnalyticsPage() {
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-1">
                           <p className="text-sm text-muted-foreground">Min Green Time</p>
-                          <p className="text-lg font-semibold">{typeof rep?.min_green === 'number' ? rep.min_green.toFixed(1) : typeof vacStatus?.min_green === 'number' ? vacStatus.min_green.toFixed(1) : '-'}s</p>
+                          <p className="text-lg font-semibold">{typeof rep?.min_green === "number" ? `${rep.min_green.toFixed(1)}s` : "-"}</p>
                         </div>
                         <div className="space-y-1">
                           <p className="text-sm text-muted-foreground">Max Green Time</p>
-                          <p className="text-lg font-semibold">{typeof rep?.max_green === 'number' ? rep.max_green.toFixed(1) : typeof vacStatus?.max_green === 'number' ? vacStatus.max_green.toFixed(1) : '-'}s</p>
+                          <p className="text-lg font-semibold">{typeof rep?.max_green === "number" ? `${rep.max_green.toFixed(1)}s` : "-"}</p>
                         </div>
                       </div>
                     </CardContent>

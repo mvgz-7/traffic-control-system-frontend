@@ -1,8 +1,14 @@
 "use client"
 
+import { useState } from "react"
 import useSWR from "swr"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { getLineCounts } from "@/lib/api"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { toast } from "sonner"
+import { RotateCcw } from "lucide-react"
+import { getLineCounts, resetLineCounts, getProcessingStatus } from "@/lib/api"
+import type { ProcessingStatus } from "@/lib/types"
 
 interface VehicleSummaryProps {
   intersectionId: string
@@ -21,11 +27,33 @@ const VEHICLE_CLASSES = [
 ]
 
 export function VehicleSummary({ intersectionId, liveLineCounts }: VehicleSummaryProps) {
-  const { data, error, isLoading } = useSWR(
+  const [isResetting, setIsResetting] = useState(false)
+  const { data, error, isLoading, mutate } = useSWR(
     intersectionId ? ["lineCounts", intersectionId] : null,
     () => getLineCounts(intersectionId),
     { refreshInterval: 3000, fallbackData: null }
   )
+
+  const { data: processingStatus } = useSWR<ProcessingStatus>(
+    intersectionId ? ["processingStatus", intersectionId] : null,
+    () => getProcessingStatus(intersectionId),
+    { refreshInterval: 5000 }
+  )
+
+  const isProcessingRunning = processingStatus?.state?.toLowerCase() === "running"
+
+  const handleReset = async () => {
+    setIsResetting(true)
+    try {
+      await resetLineCounts(intersectionId)
+      toast.success("Line counts reset")
+      mutate()
+    } catch {
+      toast.error("Failed to reset line counts")
+    } finally {
+      setIsResetting(false)
+    }
+  }
 
   // Prefer live line counts pushed from the WebSocket when available
   const counts: Record<string, Record<string, number>> = (liveLineCounts as any) || (data?.counts || {})
@@ -43,20 +71,39 @@ export function VehicleSummary({ intersectionId, liveLineCounts }: VehicleSummar
 
   return (
     <Card className="h-full">
-      <CardHeader>
+      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle>Vehicle Summary</CardTitle>
+        <Button variant="outline" size="sm" onClick={handleReset} disabled={isResetting}>
+          <RotateCcw className={`mr-1 h-3 w-3 ${isResetting ? "animate-spin" : ""}`} />
+          Reset
+        </Button>
       </CardHeader>
       <CardContent>
         {error && <p className="text-sm text-destructive mb-3">Failed to load line counts</p>}
+
+        {/* Processing status indicator */}
+        {!isProcessingRunning && (
+          <div className="mb-4 rounded-lg border border-yellow-500/30 bg-yellow-500/5 px-4 py-3">
+            <p className="text-sm text-yellow-600 dark:text-yellow-400 font-medium">
+              Processing is not running
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              Start processing to begin counting vehicles crossing the counting lines.
+            </p>
+          </div>
+        )}
+
         <div className="mb-4">
           <div className="p-4 rounded-lg bg-gradient-to-r from-white/5 to-white/3 border border-muted flex items-center justify-between">
             <div>
               <p className="text-sm text-muted-foreground">Total Vehicles</p>
               <p className="text-4xl md:text-5xl font-extrabold text-foreground">{total}</p>
             </div>
-            <div className="text-right">
-              <p className="text-xs text-muted-foreground">Updated</p>
-              <p className="text-xs text-muted-foreground">{isLoading ? "Loading…" : (data?.source || "-")}</p>
+            <div className="text-right space-y-1">
+              <Badge variant={isProcessingRunning ? "success" : "secondary"} className="text-xs">
+                {isProcessingRunning ? "Live" : "Idle"}
+              </Badge>
+              <p className="text-xs text-muted-foreground">{isLoading ? "Loading..." : (data?.source || "-")}</p>
             </div>
           </div>
         </div>

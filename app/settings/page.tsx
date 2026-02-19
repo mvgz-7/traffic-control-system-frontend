@@ -176,10 +176,6 @@ export default function SettingsPage() {
                     <p className="text-xs text-muted-foreground">Confidence Threshold</p>
                     <p className="font-semibold">{(settings.confidence_threshold * 100).toFixed(0)}%</p>
                   </div>
-                  <div className="p-3 bg-muted rounded-lg">
-                    <p className="text-xs text-muted-foreground">Video Source</p>
-                    <p className="font-semibold text-sm break-all">{settings.video_source}</p>
-                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -205,7 +201,7 @@ export default function SettingsPage() {
                 </div>
                 <div className="p-3 bg-muted rounded-lg">
                   <p className="text-xs text-muted-foreground">Tables</p>
-                  <p className="font-semibold">vehicle_detections, phase_changes</p>
+                  <p className="font-semibold text-sm">vehicle_detections, lane_signal_changes, safety_violations, line_crossing_events, health_metrics, system_status</p>
                 </div>
               </div>
             </CardContent>

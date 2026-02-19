@@ -4,14 +4,14 @@ import useSWR from "swr"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { getIntersectionStatus } from "@/lib/api"
-import type { VACStatus } from "@/lib/types"
+import type { IntersectionStatus } from "@/lib/types"
 
 interface LaneCountsCardProps {
   intersectionId: string
 }
 
 export function LaneCountsCard({ intersectionId }: LaneCountsCardProps) {
-  const { data: status } = useSWR<VACStatus>(
+  const { data: status } = useSWR<IntersectionStatus>(
     [`lanes`, intersectionId],
     () => getIntersectionStatus(intersectionId),
     { refreshInterval: 1000 }
@@ -30,6 +30,13 @@ export function LaneCountsCard({ intersectionId }: LaneCountsCardProps) {
     )
   }
 
+  const lanes = status.lanes || {}
+  const laneIds = Object.keys(lanes)
+  const activeLanes = laneIds.filter((id) => {
+    const state = String(lanes[id]?.state ?? "").toUpperCase()
+    return state === "GREEN" || state === "YELLOW"
+  })
+
   return (
     <Card>
       <CardHeader>
@@ -37,14 +44,18 @@ export function LaneCountsCard({ intersectionId }: LaneCountsCardProps) {
       </CardHeader>
       <CardContent>
         <div className="flex flex-wrap gap-2">
-          {status.active_lanes.map((lane) => (
-            <Badge key={lane} variant="default">
-              {lane}
-            </Badge>
-          ))}
+          {laneIds.map((laneId) => {
+            const state = String(lanes[laneId]?.state ?? "").toUpperCase()
+            const isActive = state === "GREEN" || state === "YELLOW"
+            return (
+              <Badge key={laneId} variant={isActive ? "default" : "outline"}>
+                {laneId} — {state || "UNKNOWN"}
+              </Badge>
+            )
+          })}
         </div>
-        {status.active_lanes.length === 0 && (
-          <p className="text-sm text-muted-foreground">No active lanes</p>
+        {laneIds.length === 0 && (
+          <p className="text-sm text-muted-foreground">No lanes configured</p>
         )}
       </CardContent>
     </Card>

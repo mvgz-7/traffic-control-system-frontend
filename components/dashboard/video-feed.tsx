@@ -15,6 +15,8 @@ export function VideoFeedWebSocket({ intersectionId, onFrame }: VideoFeedWebSock
   const canvasRefs = useRef<HTMLCanvasElement[]>([])
   const wsRef = useRef<WebSocket | null>(null)
   const [isConnected, setIsConnected] = useState(false)
+  const [hasFrame, setHasFrame] = useState(false)
+  const [statusMessage, setStatusMessage] = useState<string | null>(null)
   const reconnectRef = useRef<{ attempts: number }>({ attempts: 0 })
   const containerRef = useRef<HTMLDivElement | null>(null)
   const fullscreenRef = useRef<HTMLDivElement | null>(null)
@@ -199,13 +201,23 @@ export function VideoFeedWebSocket({ intersectionId, onFrame }: VideoFeedWebSock
 
       ws.onopen = () => {
         setIsConnected(true)
+        setHasFrame(false)
         reconnectRef.current.attempts = 0
       }
 
       ws.onmessage = async (event) => {
         try {
           const message = JSON.parse(event.data)
+
+          // Handle status messages (e.g., "waiting for first frame")
+          if (message.type === "status") {
+            setStatusMessage(message.message || null)
+            return
+          }
+
           if (message.type === "frame" && (message.frame || message.tiles)) {
+            setHasFrame(true)
+            setStatusMessage(null)
             // If resize/transition is in progress, skip drawing for a short time
             if (resizingRef.current) {
               // still surface metadata but skip draw
@@ -327,6 +339,23 @@ export function VideoFeedWebSocket({ intersectionId, onFrame }: VideoFeedWebSock
             className="relative w-full aspect-video overflow-hidden rounded-lg border bg-black"
             style={{ maxHeight: "65vh" }}
           >
+            {/* Loading overlay when connected but no frame yet */}
+            {isConnected && !hasFrame && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-3 bg-black/80">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-muted border-t-primary" />
+                <p className="text-sm text-muted-foreground">
+                  {statusMessage || "Waiting for video frames..."}
+                </p>
+                <p className="text-xs text-muted-foreground/60">Model may be loading for the first time</p>
+              </div>
+            )}
+
+            {/* Disconnected overlay */}
+            {!isConnected && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-black/80">
+                <p className="text-sm text-muted-foreground">Connecting to video stream...</p>
+              </div>
+            )}
             {!tileMode ? (
               <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
             ) : (
@@ -337,7 +366,7 @@ export function VideoFeedWebSocket({ intersectionId, onFrame }: VideoFeedWebSock
                 {Array.from({ length: tileRows * tileCols }).map((_, i) => (
                   <canvas
                     key={`tile-canvas-${i}`}
-                    ref={(el) => (canvasRefs.current[i] = el as HTMLCanvasElement)}
+                    ref={(el) => { canvasRefs.current[i] = el as HTMLCanvasElement }}
                     className="w-full h-full"
                   />
                 ))}

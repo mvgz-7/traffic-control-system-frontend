@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { toast } from "sonner"
-import { Cpu, HardDrive, MemoryStick, Timer, CheckCircle, XCircle, Play, Square } from "lucide-react"
+import { Cpu, HardDrive, MemoryStick, Timer, CheckCircle, XCircle, Play, Square, ShieldAlert } from "lucide-react"
 import { CameraSourceManager } from "@/components/dashboard/camera-source-manager"
 import {
   listIntersections,
@@ -18,8 +18,19 @@ import {
   startProcessing,
   stopProcessing,
   getHealth,
+  getHealthMetrics,
+  emergencyStop,
 } from "@/lib/api"
-import type { IntersectionSummary, ProcessingStatus, CameraHealthResponse, HealthResponse } from "@/lib/types"
+import type { IntersectionSummary, ProcessingStatus, CameraHealthResponse, HealthResponse, HealthMetricPoint } from "@/lib/types"
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+} from "recharts"
 
 interface SystemLog {
   id: string
@@ -51,6 +62,23 @@ export default function SystemMonitorPage() {
     selectedIntersectionId ? [`cameras`, selectedIntersectionId] : null,
     selectedIntersectionId ? () => getCameraHealth(selectedIntersectionId) : null,
     { refreshInterval: 3000 }
+  )
+
+  // Historical health metrics (5 min window)
+  const { data: cpuHistory } = useSWR<HealthMetricPoint[]>(
+    "health-cpu-history",
+    () => getHealthMetrics("cpu_percent", 300),
+    { refreshInterval: 10000, fallbackData: [] }
+  )
+  const { data: ramHistory } = useSWR<HealthMetricPoint[]>(
+    "health-ram-history",
+    () => getHealthMetrics("ram_percent", 300),
+    { refreshInterval: 10000, fallbackData: [] }
+  )
+  const { data: fpsHistory } = useSWR<HealthMetricPoint[]>(
+    "health-fps-history",
+    () => getHealthMetrics("fps", 300),
+    { refreshInterval: 10000, fallbackData: [] }
   )
 
   useEffect(() => {
@@ -96,11 +124,30 @@ export default function SystemMonitorPage() {
     }
   }
 
+  const handleEmergencyStop = async () => {
+    if (!selectedIntersectionId) return
+    setIsProcessingUpdating(true)
+    try {
+      await emergencyStop(selectedIntersectionId)
+      toast.success("EMERGENCY STOP — All lanes forced RED")
+      addLog("warning", `Emergency stop executed for ${selectedIntersectionId}`)
+    } catch (err) {
+      toast.error("Failed to execute emergency stop")
+      addLog("error", `Emergency stop failed for ${selectedIntersectionId}`)
+    } finally {
+      setIsProcessingUpdating(false)
+    }
+  }
+
   const formatUptime = (seconds: number) => {
     const hrs = Math.floor(seconds / 3600)
     const mins = Math.floor((seconds % 3600) / 60)
     const secs = seconds % 60
     return `${hrs.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
+  }
+
+  const formatChartTime = (ts: number) => {
+    return new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })
   }
 
   const cpu = health?.metrics?.cpu_percent
@@ -172,9 +219,7 @@ export default function SystemMonitorPage() {
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div
-                        className="rounded-lg bg-muted p-2"
-                      >
+                      <div className="rounded-lg bg-muted p-2">
                         <item.icon className="h-5 w-5 text-foreground" />
                       </div>
                       <div>
@@ -205,6 +250,75 @@ export default function SystemMonitorPage() {
             ))}
           </div>
 
+          {/* Historical Health Metrics Charts */}
+          <div className="grid gap-6 lg:grid-cols-3">
+            {/* CPU History */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">CPU Usage (5 min)</CardTitle>
+              </CardHeader>
+              <CardContent className="h-[180px]">
+                {cpuHistory && cpuHistory.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={cpuHistory} margin={{ left: 0, right: 8, top: 5, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="timestamp" tickFormatter={formatChartTime} tick={{ fontSize: 10 }} />
+                      <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} />
+                      <Tooltip labelFormatter={(v) => formatChartTime(Number(v))} formatter={(v: any) => [`${Number(v).toFixed(1)}%`, "CPU"]} />
+                      <Line type="monotone" dataKey="value" stroke="var(--chart-1)" dot={false} strokeWidth={2} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="text-xs text-muted-foreground flex items-center justify-center h-full">No CPU data yet</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* RAM History */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">RAM Usage (5 min)</CardTitle>
+              </CardHeader>
+              <CardContent className="h-[180px]">
+                {ramHistory && ramHistory.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={ramHistory} margin={{ left: 0, right: 8, top: 5, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="timestamp" tickFormatter={formatChartTime} tick={{ fontSize: 10 }} />
+                      <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} />
+                      <Tooltip labelFormatter={(v) => formatChartTime(Number(v))} formatter={(v: any) => [`${Number(v).toFixed(1)}%`, "RAM"]} />
+                      <Line type="monotone" dataKey="value" stroke="var(--chart-2)" dot={false} strokeWidth={2} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="text-xs text-muted-foreground flex items-center justify-center h-full">No RAM data yet</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* FPS History */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">FPS (5 min)</CardTitle>
+              </CardHeader>
+              <CardContent className="h-[180px]">
+                {fpsHistory && fpsHistory.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={fpsHistory} margin={{ left: 0, right: 8, top: 5, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis dataKey="timestamp" tickFormatter={formatChartTime} tick={{ fontSize: 10 }} />
+                      <YAxis tick={{ fontSize: 10 }} />
+                      <Tooltip labelFormatter={(v) => formatChartTime(Number(v))} formatter={(v: any) => [`${Number(v).toFixed(1)}`, "FPS"]} />
+                      <Line type="monotone" dataKey="value" stroke="var(--chart-3)" dot={false} strokeWidth={2} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <p className="text-xs text-muted-foreground flex items-center justify-center h-full">No FPS data yet</p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
           {/* Camera Source Management + Camera Health */}
           <div className="grid gap-6 lg:grid-cols-2 items-start">
             <div className="h-full">
@@ -221,7 +335,7 @@ export default function SystemMonitorPage() {
                   Object.entries(cameraHealth).map(([cameraId, cam]) => (
                     <div key={cameraId} className="flex items-center justify-between p-2 bg-muted rounded-lg">
                       <div className="flex items-center gap-2">
-                        {cam.status === "healthy" ? (
+                        {cam.alive ? (
                           <CheckCircle className="w-4 h-4 text-green-600" />
                         ) : (
                           <XCircle className="w-4 h-4 text-red-600" />
@@ -229,12 +343,12 @@ export default function SystemMonitorPage() {
                         <div>
                           <p className="text-sm font-medium">{cameraId}</p>
                           <p className="text-xs text-muted-foreground">
-                            {cam.fps?.toFixed(1) || "N/A"} FPS
-                            {cam.resolution && ` • ${cam.resolution[0]}x${cam.resolution[1]}`}
+                            {cam.fps_actual?.toFixed(1) ?? "0"} / {cam.fps_expected} FPS
+                            {cam.approach && ` • ${cam.approach}`}
                           </p>
                         </div>
                       </div>
-                      <Badge variant={cam.status === "healthy" ? "default" : "destructive"}>{cam.status}</Badge>
+                      <Badge variant={cam.alive ? "default" : "destructive"}>{cam.status}</Badge>
                     </div>
                   ))
                 ) : selectedIntersectionId ? (
@@ -246,7 +360,7 @@ export default function SystemMonitorPage() {
             </Card>
           </div>
 
-          {/* Processing Control + System Logs */}
+          {/* Processing Control + Emergency + System Logs */}
           <div className="grid gap-6 lg:grid-cols-2 items-start">
             {/* Processing Control */}
             {selectedIntersectionId ? (
@@ -293,6 +407,22 @@ export default function SystemMonitorPage() {
                       <Square className="mr-2 h-4 w-4" />
                       Stop Processing
                     </Button>
+                  </div>
+
+                  {/* Emergency Stop */}
+                  <div className="border-t border-border pt-4">
+                    <Button
+                      variant="destructive"
+                      className="w-full font-bold"
+                      onClick={handleEmergencyStop}
+                      disabled={isProcessingUpdating}
+                    >
+                      <ShieldAlert className="mr-2 h-4 w-4" />
+                      EMERGENCY STOP — ALL RED
+                    </Button>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Forces all lanes to RED immediately.
+                    </p>
                   </div>
                 </CardContent>
               </Card>

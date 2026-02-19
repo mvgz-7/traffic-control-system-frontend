@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { AlertCircle, BookOpen, CheckCircle2, ShieldAlert, Zap } from "lucide-react"
+import { AlertCircle, BookOpen, CheckCircle2, ShieldAlert, Timer, Zap } from "lucide-react"
 import { toast } from "sonner"
 import {
   listIntersections,
@@ -201,6 +201,25 @@ export default function TrafficControlPage() {
     }
   }
 
+  const handleFixedTiming = async () => {
+    if (!selectedId || laneIds.length === 0) return
+    setIsUpdating(true)
+    try {
+      await Promise.all(
+        laneIds.map((laneId) =>
+          updateLaneConfig(selectedId, laneId, { max_gap: 999 })
+        )
+      )
+      mutateLaneConfig()
+      toast.success("Fixed timing enabled — all lanes set to max_gap=999")
+    } catch (error) {
+      toast.error("Failed to enable fixed timing")
+      console.error(error)
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
   const handleInputChange = (key: string, value: number) => {
     setFormData((prev) => ({ ...prev, [key]: value }))
   }
@@ -273,6 +292,26 @@ export default function TrafficControlPage() {
                         </p>
                       </div>
                     )}
+
+                    {/* Fixed Timing */}
+                    <div className="border-t border-border pt-4">
+                      <p className="text-sm font-medium mb-3 flex items-center gap-2">
+                        <Timer className="w-4 h-4 text-amber-500" />
+                        Fixed Timing Mode
+                      </p>
+                      <Button
+                        variant="outline"
+                        className="w-full border-amber-500 text-amber-600 hover:bg-amber-500/10"
+                        onClick={handleFixedTiming}
+                        disabled={isUpdating || !selectedId}
+                      >
+                        <Timer className="w-4 h-4 mr-2" />
+                        Enable Fixed Timing (All Lanes)
+                      </Button>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Sets max_gap=999 on all lanes. Each lane will always run to its max green duration.
+                      </p>
+                    </div>
                   </CardContent>
                 </Card>
 

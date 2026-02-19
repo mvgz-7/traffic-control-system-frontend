@@ -161,14 +161,15 @@ export function CameraSourceManager({ intersectionId }: CameraSourceManagerProps
         <div className="rounded-lg bg-muted p-4">
           <h3 className="font-semibold text-sm mb-3">Assign Source to Camera</h3>
           <div className="space-y-3">
-            {/* Quick 2-slot assign for camera_north and camera_south */}
+            {/* Dynamic camera slots — includes all cameras (lane cameras + overview) */}
             <div className="grid grid-cols-1 gap-3">
               {(() => {
-                // Use dynamic camera IDs from backend lane info, fall back to camera health keys
-                const slots: string[] = lanesInfo?.lane_to_camera
-                  ? [...new Set(Object.values(lanesInfo.lane_to_camera) as string[])]
-                  : intersectionCameras
-                    ? Object.keys(intersectionCameras)
+                // Show ALL camera slots from camera health (includes overview cameras)
+                // Fall back to lane_to_camera mapping if camera health isn't loaded yet
+                const slots: string[] = intersectionCameras
+                  ? Object.keys(intersectionCameras)
+                  : lanesInfo?.lane_to_camera
+                    ? [...new Set(Object.values(lanesInfo.lane_to_camera) as string[])]
                     : []
                 return slots.map((slot) => (
                   <div key={slot} className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
@@ -219,13 +220,9 @@ export function CameraSourceManager({ intersectionId }: CameraSourceManagerProps
           {intersectionCameras ? (
             <div className="grid gap-2">
               {(() => {
-                // Only show lane cameras (exclude overview-only cameras)
-                const laneCamIds: string[] = lanesInfo?.lane_to_camera
-                  ? [...new Set(Object.values(lanesInfo.lane_to_camera) as string[])]
-                  : Object.keys(intersectionCameras).filter(
-                      (id) => intersectionCameras[id]?.lanes?.length > 0
-                    )
-                return laneCamIds.map((camId) => {
+                // Show all cameras (lane cameras + overview)
+                const allCamIds: string[] = Object.keys(intersectionCameras)
+                return allCamIds.map((camId) => {
                   const cam = intersectionCameras[camId]
                   const status = cam?.status
                   const s = status?.toString().toLowerCase() ?? ""

@@ -121,6 +121,14 @@ export interface VideoFrameMessage {
   lane_counts: Record<string, number>
   fps: number
   camera_health: CameraHealthResponse
+  line_counts?: Record<string, Record<string, number>>  // per-line per-class crossing counts (only when processing is active)
+}
+
+// ===== WebSocket waiting status message (sent while waiting for first frame) =====
+export interface WaitingStatusMessage {
+  type: "status"
+  status: "waiting"
+  message: string
 }
 
 // ===== WebSocket status-only feed (matches backend WS /status_feed) =====

@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { listIntersections, getLineCounts } from "@/lib/api"
 import type { IntersectionSummary } from "@/lib/types"
+import * as XLSX from "xlsx"
 
 const VEHICLE_CLASSES = [
   "Bus",
@@ -80,16 +81,57 @@ type IntersectionCounts = {
   lanes: Record<string, { total: number; classes: Record<string, number> }>
 }
 
-function downloadJson(filename: string, data: unknown) {
-  const blob = new Blob([JSON.stringify(data, null, 2)], {
-    type: "application/json",
-  })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement("a")
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
+function downloadXlsx(
+  filename: string,
+  hourlyData: Record<string, HourlyTotal[]>,
+  countsData: Record<string, IntersectionCounts>
+) {
+  const wb = XLSX.utils.book_new()
+  const dateStr = new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })
+
+  // Sheet 1: Hourly Totals per intersection
+  for (const [id, rows] of Object.entries(hourlyData)) {
+    const name = countsData[id]?.name || id
+    const header = [{ Hour: `Date: ${dateStr}`, Vehicles: "" as string | number }]
+    const sheetData = rows.map((r) => ({ Hour: r.hour, Vehicles: r.total as string | number }))
+    sheetData.push({ Hour: "Total", Vehicles: rows.reduce((s, r) => s + r.total, 0) })
+    const ws = XLSX.utils.json_to_sheet([...header, ...sheetData])
+    ws["!cols"] = [{ wch: 32 }, { wch: 12 }]
+    XLSX.utils.book_append_sheet(wb, ws, `${name} Hourly`.slice(0, 31))
+  }
+
+  // Sheet 2: Per-lane classification counts per intersection
+  for (const [id, counts] of Object.entries(countsData)) {
+    const sheetRows: Record<string, string | number>[] = []
+    const sortedLanes = Object.entries(counts.lanes).sort(([a], [b]) => {
+      const ai = LANE_ORDER.indexOf(a.toLowerCase())
+      const bi = LANE_ORDER.indexOf(b.toLowerCase())
+      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
+    })
+    for (const [lane, data] of sortedLanes) {
+      const row: Record<string, string | number> = { Lane: lane.charAt(0).toUpperCase() + lane.slice(1) }
+      for (const cls of VEHICLE_CLASSES) {
+        row[cls] = data.classes[cls] || 0
+      }
+      row["Total"] = data.total
+      sheetRows.push(row)
+    }
+    // Grand total row
+    const totalRow: Record<string, string | number> = { Lane: "Total" }
+    for (const cls of VEHICLE_CLASSES) {
+      totalRow[cls] = counts.classes[cls] || 0
+    }
+    totalRow["Total"] = counts.total
+    sheetRows.push(totalRow)
+
+    // Add date header row
+    const headerRow: Record<string, string | number> = { Lane: `Date: ${dateStr}` }
+    const ws = XLSX.utils.json_to_sheet([headerRow, ...sheetRows])
+    ws["!cols"] = [{ wch: 32 }, ...VEHICLE_CLASSES.map(() => ({ wch: 12 })), { wch: 10 }]
+    XLSX.utils.book_append_sheet(wb, ws, `${counts.name} Counts`.slice(0, 31))
+  }
+
+  XLSX.writeFile(wb, filename)
 }
 
 function parseLaneCounts(counts: LaneCounts | undefined) {
@@ -247,7 +289,7 @@ export default function AnalyticsPage() {
               className="border-primary text-primary hover:bg-primary/10"
               onClick={() => {
                 const ts = new Date().toISOString().replace(/[:.]/g, "-")
-                downloadJson(`traffic_analytics_${ts}.json`, report)
+                downloadXlsx(`traffic_analytics_${ts}.xlsx`, hourlyByIntersection, countsData)
               }}
               disabled={intersectionList.length === 0}
             >
@@ -273,7 +315,10 @@ export default function AnalyticsPage() {
                   <Card key={ix.id}>
                     <CardHeader className="pb-3">
                       <div className="flex items-center justify-between">
-                        <CardTitle className="capitalize">{ix.name}</CardTitle>
+                        <div>
+                          <CardTitle className="capitalize">{ix.name}</CardTitle>
+                          <p className="text-sm text-muted-foreground mt-1">{new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</p>
+                        </div>
                         <span className="text-sm font-semibold tabular-nums">
                           Total: {grandTotal}
                         </span>
@@ -328,7 +373,10 @@ export default function AnalyticsPage() {
               <Card>
                 <CardHeader className="pb-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <CardTitle>Vehicle Count Per Lane</CardTitle>
+                    <div>
+                      <CardTitle>Vehicle Count Per Lane</CardTitle>
+                      <p className="text-sm text-muted-foreground mt-1">{new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</p>
+                    </div>
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">Select Intersection:</span>
                       <select

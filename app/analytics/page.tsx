@@ -8,7 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { listIntersections, getLineCounts } from "@/lib/api"
 import type { IntersectionSummary } from "@/lib/types"
-import * as XLSX from "xlsx"
+import jsPDF from "jspdf"
+import autoTable from "jspdf-autotable"
 
 const VEHICLE_CLASSES = [
   "Bus",
@@ -81,57 +82,141 @@ type IntersectionCounts = {
   lanes: Record<string, { total: number; classes: Record<string, number> }>
 }
 
-function downloadXlsx(
+function downloadPdf(
   filename: string,
   hourlyData: Record<string, HourlyTotal[]>,
   countsData: Record<string, IntersectionCounts>
 ) {
-  const wb = XLSX.utils.book_new()
-  const dateStr = new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })
+  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" })
+  const pageW = doc.internal.pageSize.getWidth()
+  const pageH = doc.internal.pageSize.getHeight()
+  const margin = 10
+  const colW = (pageW - margin * 3) / 2 // two columns with gap
+  const dateStr = new Date().toLocaleDateString(undefined, {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  })
 
-  // Sheet 1: Hourly Totals per intersection
-  for (const [id, rows] of Object.entries(hourlyData)) {
+  // Ordered intersection IDs: graceland left, capitol right
+  const ids = Object.keys(countsData)
+  const leftId = ids.find((id) => id.toLowerCase().includes("graceland")) || ids[0]
+  const rightId = ids.find((id) => id !== leftId) || ids[1]
+  const columns = [leftId, rightId].filter(Boolean)
+
+  // ─── Page 1: Title + Hourly Tables ───
+  doc.setFontSize(16)
+  doc.setFont("helvetica", "bold")
+  doc.text("Traffic Analytics Report", pageW / 2, margin + 4, { align: "center" })
+  doc.setFontSize(10)
+  doc.setFont("helvetica", "normal")
+  doc.text(dateStr, pageW / 2, margin + 10, { align: "center" })
+
+  let startY = margin + 16
+
+  columns.forEach((id, colIdx) => {
+    const xOffset = margin + colIdx * (colW + margin)
+    const rows = hourlyData[id] || []
     const name = countsData[id]?.name || id
-    const header = [{ Hour: `Date: ${dateStr}`, Vehicles: "" as string | number }]
-    const sheetData = rows.map((r) => ({ Hour: r.hour, Vehicles: r.total as string | number }))
-    sheetData.push({ Hour: "Total", Vehicles: rows.reduce((s, r) => s + r.total, 0) })
-    const ws = XLSX.utils.json_to_sheet([...header, ...sheetData])
-    ws["!cols"] = [{ wch: 32 }, { wch: 12 }]
-    XLSX.utils.book_append_sheet(wb, ws, `${name} Hourly`.slice(0, 31))
-  }
+    const grandTotal = rows.reduce((s, r) => s + r.total, 0)
 
-  // Sheet 2: Per-lane classification counts per intersection
-  for (const [id, counts] of Object.entries(countsData)) {
-    const sheetRows: Record<string, string | number>[] = []
+    doc.setFontSize(11)
+    doc.setFont("helvetica", "bold")
+    doc.text(`${name.charAt(0).toUpperCase() + name.slice(1)} Intersection`, xOffset, startY)
+    doc.setFontSize(8)
+    doc.setFont("helvetica", "normal")
+    doc.text(`Total Vehicles: ${grandTotal}`, xOffset + colW, startY, { align: "right" })
+
+    const body = rows.map((r) => [r.hour, String(r.total)])
+    body.push([{ content: "Total", styles: { fontStyle: "bold" } } as unknown as string, { content: String(grandTotal), styles: { fontStyle: "bold" } } as unknown as string])
+
+    autoTable(doc, {
+      startY: startY + 2,
+      margin: { left: xOffset, right: pageW - xOffset - colW },
+      head: [["Hour", "Vehicles"]],
+      body,
+      theme: "grid",
+      styles: { fontSize: 7, cellPadding: 1.2 },
+      headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: "bold", fontSize: 7.5 },
+      columnStyles: { 0: { cellWidth: colW * 0.7 }, 1: { cellWidth: colW * 0.3, halign: "right" } },
+      tableWidth: colW,
+    })
+  })
+
+  // ─── Page 2: Per-Lane Classification Tables (both intersections, stacked) ───
+  doc.addPage()
+  doc.setFontSize(16)
+  doc.setFont("helvetica", "bold")
+  doc.text("Vehicle Count Per Lane", pageW / 2, margin + 4, { align: "center" })
+  doc.setFontSize(10)
+  doc.setFont("helvetica", "normal")
+  doc.text(dateStr, pageW / 2, margin + 10, { align: "center" })
+
+  let classY = margin + 16
+
+  columns.forEach((id) => {
+    const counts = countsData[id]
+    if (!counts) return
+    const name = counts.name || id
+
+    doc.setFontSize(11)
+    doc.setFont("helvetica", "bold")
+    doc.text(`${name.charAt(0).toUpperCase() + name.slice(1)} Intersection`, margin, classY)
+
     const sortedLanes = Object.entries(counts.lanes).sort(([a], [b]) => {
       const ai = LANE_ORDER.indexOf(a.toLowerCase())
       const bi = LANE_ORDER.indexOf(b.toLowerCase())
       return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
     })
-    for (const [lane, data] of sortedLanes) {
-      const row: Record<string, string | number> = { Lane: lane.charAt(0).toUpperCase() + lane.slice(1) }
-      for (const cls of VEHICLE_CLASSES) {
-        row[cls] = data.classes[cls] || 0
-      }
-      row["Total"] = data.total
-      sheetRows.push(row)
-    }
-    // Grand total row
-    const totalRow: Record<string, string | number> = { Lane: "Total" }
-    for (const cls of VEHICLE_CLASSES) {
-      totalRow[cls] = counts.classes[cls] || 0
-    }
-    totalRow["Total"] = counts.total
-    sheetRows.push(totalRow)
 
-    // Add date header row
-    const headerRow: Record<string, string | number> = { Lane: `Date: ${dateStr}` }
-    const ws = XLSX.utils.json_to_sheet([headerRow, ...sheetRows])
-    ws["!cols"] = [{ wch: 32 }, ...VEHICLE_CLASSES.map(() => ({ wch: 12 })), { wch: 10 }]
-    XLSX.utils.book_append_sheet(wb, ws, `${counts.name} Counts`.slice(0, 31))
+    const fullW = pageW - margin * 2
+    const head = [["Lane", ...VEHICLE_CLASSES, "Total"]]
+    const body = sortedLanes.map(([lane, data]) => [
+      lane.charAt(0).toUpperCase() + lane.slice(1),
+      ...VEHICLE_CLASSES.map((cls) => String(data.classes[cls] || 0)),
+      String(data.total),
+    ])
+    body.push([
+      { content: "Total", styles: { fontStyle: "bold" } } as unknown as string,
+      ...VEHICLE_CLASSES.map((cls) => ({ content: String(counts.classes[cls] || 0), styles: { fontStyle: "bold" } }) as unknown as string),
+      { content: String(counts.total), styles: { fontStyle: "bold" } } as unknown as string,
+    ])
+
+    autoTable(doc, {
+      startY: classY + 2,
+      margin: { left: margin, right: margin },
+      head,
+      body,
+      theme: "grid",
+      styles: { fontSize: 7, cellPadding: 1.5, overflow: "linebreak" },
+      headStyles: { fillColor: [34, 197, 94], textColor: 255, fontStyle: "bold", fontSize: 7.5 },
+      columnStyles: {
+        0: { cellWidth: fullW * 0.1 },
+        [VEHICLE_CLASSES.length + 1]: { fontStyle: "bold" },
+      },
+      tableWidth: fullW,
+    })
+
+    // Get the Y position after the table for the next one
+    classY = (doc as unknown as Record<string, number>).lastAutoTable?.finalY + 10 || classY + 40
+  })
+
+  // Footer on all pages
+  const totalPages = doc.getNumberOfPages()
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i)
+    doc.setFontSize(7)
+    doc.setFont("helvetica", "italic")
+    doc.text(
+      `Generated: ${new Date().toLocaleString()} | Page ${i} of ${totalPages}`,
+      pageW / 2,
+      pageH - 5,
+      { align: "center" }
+    )
   }
 
-  XLSX.writeFile(wb, filename)
+  doc.save(filename)
 }
 
 function parseLaneCounts(counts: LaneCounts | undefined) {
@@ -289,7 +374,7 @@ export default function AnalyticsPage() {
               className="border-primary text-primary hover:bg-primary/10"
               onClick={() => {
                 const ts = new Date().toISOString().replace(/[:.]/g, "-")
-                downloadXlsx(`traffic_analytics_${ts}.xlsx`, hourlyByIntersection, countsData)
+                downloadPdf(`traffic_analytics_${ts}.pdf`, hourlyByIntersection, countsData)
               }}
               disabled={intersectionList.length === 0}
             >

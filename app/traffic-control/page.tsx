@@ -548,11 +548,11 @@ export default function TrafficControlPage() {
                       <div className="bg-muted p-3 rounded-lg">
                         <p className="text-sm font-semibold flex items-center gap-2">
                           <ShieldAlert className="w-4 h-4 text-red-500" />
-                          Safety
+                          Emergency Controls
                         </p>
                         <p className="text-xs text-muted-foreground mt-2 ml-6">
-                          The Safety Coordinator prevents conflicting lanes from being GREEN simultaneously.
-                          All-Red intervals are enforced between transitions.
+                          The Emergency Controls allow you to override normal traffic signals. 
+                          Emergency Stop forces all lanes to RED immediately for safety during emergencies or system malfunctions.
                         </p>
                       </div>
                     </div>

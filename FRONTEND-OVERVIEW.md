@@ -1,70 +1,41 @@
-# Frontend Overview (traffic-control-system)
+# Frontend Overview
 
-Purpose
-- Provides the web dashboard and controls for the Traffic Control System.
-- Consumes the Python FastAPI backend at `http://localhost:8000` to show MJPEG feed and live stats.
+## Purpose
+- Next.js dashboard for the Vehicle Counting + Dynamic Traffic Light System.
+- Connects to the FastAPI backend (default `http://localhost:8000`) for live video + status.
 
-Where it lives
-- Next.js (app router) project. Key areas:
-  - `app/` — pages and layout (app/page.tsx, app/*/page.tsx)
-  - `components/` — React UI components (dashboard widgets, layout, UI primitives)
-  - `lib/` — small helpers and API functions (`lib/api.ts`, `lib/types.ts`)
-  - `app/globals.css` — global CSS and theme variables
+## Run
 
-How to run (dev)
-- From repo root:
-
+Dev:
 ```bash
-cd traffic-control-system
-npm install    # if not installed
+cd traffic-control-system-frontend
+npm install
 npm run dev
 ```
 
-How to build (production)
-
+Production build:
 ```bash
-cd traffic-control-system
+cd traffic-control-system-frontend
 npm run build
 npm run start
 ```
 
-Important environment variables
-- `NEXT_PUBLIC_API_URL` — base URL for backend API. Default: `http://localhost:8000`.
-  Set this in `.env.local` if your backend runs elsewhere.
+## Config
+- `NEXT_PUBLIC_API_URL` (optional) — backend base URL. Default: `http://localhost:8000`.
+  - Put it in `.env.local` if your backend runs elsewhere.
 
-Key frontend files/components
-- `lib/api.ts` — central helper functions calling backend endpoints (fetchLiveStats, startCamera, stopCamera, changeSource, getVideoFeedUrl).
-- `components/dashboard/video-feed.tsx` — renders the MJPEG feed using an `<img>` tag, Start/Stop buttons and cache-bust handling.
-- `components/dashboard/stats-cards.tsx` — top-level stat cards reading `TrafficStats`.
+## Key Files
+- `lib/api.ts` — all backend calls and response normalization.
+- `lib/types.ts` — frontend types for API responses.
+- `components/dashboard/video-feed.tsx` — WebSocket video feed rendered to `<canvas>`.
+- `components/dashboard/camera-source-manager.tsx` — upload + assign sources to camera slots.
 
-Common frontend issues & troubleshooting
-- Video is blank/frozen:
-  1. Ensure backend is running (`python main.py` in `backend`).
-  2. Start the camera backend via API or server startup: `POST /api/video/start`.
-  3. The frontend uses an `<img src="${API_BASE_URL}/api/video/feed">`. If the image caches, the UI app was updated to append `?t=${Date.now()}` to force reload after start.
-  4. If the Start button shows an error toast, open the browser devtools network tab and check the response body — backend errors are now surfaced in the frontend toasts.
-
-How to contribute / extend
-- Add pages under `app/` using the app-router pattern (`page.tsx`).
-- Reusable UI should go in `components/` and follow existing UI primitives (`components/ui/*`).
-- Keep API surface in `lib/api.ts` up to date when backend endpoints change.
-- For visual theming, prefer semantic CSS variables in `globals.css` rather than hard-coded colors.
-
-Quick examples
-- Get live stats from console (frontend helper):
-
-```js
-import { fetchLiveStats } from '@/lib/api'
-fetchLiveStats().then(console.log).catch(console.error)
-```
-
-- Change video source to webcam 0 (curl):
-
-```bash
-curl -X POST http://localhost:8000/api/video/change_source -H "Content-Type: application/json" -d '{"source":0}'
-```
-
-Where to look first
-- `lib/api.ts` to see what the frontend expects from backend endpoints.
-- `components/dashboard/video-feed.tsx` to see how MJPEG is consumed and how Start/Stop are triggered.
-- `app/layout.tsx` and `app/globals.css` for theme and style variables.
+## Troubleshooting
+- Video disconnected/blank:
+  - Confirm backend is running and reachable at `NEXT_PUBLIC_API_URL`.
+  - Check browser DevTools → Network → WS for `/api/v1/streams/{id}/video_feed`.
+  - Check backend logs for source-open/OpenCV errors after assigning a source.
+- Source assignment issues:
+  - Ensure you’re calling `POST /api/v1/sources/intersection/{id}/camera/{camera_id}/source` with `{ "source": <path|index> }`.
+- System metrics not updating:
+  - Frontend reads health from `GET /api/v1/health/status`.

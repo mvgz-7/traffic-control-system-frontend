@@ -209,3 +209,69 @@ export interface HealthMetricPoint {
   value: number
   status?: string
 }
+
+// ===== Health component detail (from /health/components) =====
+export interface HealthComponent {
+  component: string
+  status: string
+  message: string
+  alert_count: number
+}
+
+// ===== YOLO Model Config (from GET /model/config) =====
+export interface ModelRuntimeConfig {
+  confidence_threshold: number
+  iou_threshold: number
+  detection_size: number
+  max_detections: number
+  class_filter: number[]
+  tta_enabled: boolean
+  tta_scales: number[]
+}
+
+export interface ModelStaticConfig {
+  model_path: string
+  device: string
+  half_precision: boolean
+  tracking_enabled: boolean
+  tracker_type: string
+}
+
+export interface ModelConfig {
+  runtime_config: ModelRuntimeConfig
+  static_config: ModelStaticConfig
+}
+
+export interface ModelConfigUpdateRequest {
+  confidence_threshold?: number
+  iou_threshold?: number
+  detection_size?: number
+  max_detections?: number
+  class_filter?: number[]
+  tta_enabled?: boolean
+  tta_scales?: number[]
+  persist?: boolean
+}
+
+export interface ModelConfigUpdateResponse {
+  message: string
+  updated: Record<string, any>
+  persisted: boolean
+}
+
+// ===== Vehicle count report (from /reports/vehicle-counts) =====
+export interface VehicleCountReportRecord {
+  period: string
+  line_id: string
+  vehicle_class: string
+  count: number
+}
+
+export interface VehicleCountReport {
+  intersection_id: string
+  start: number
+  end: number
+  interval: string
+  total_records: number
+  data: VehicleCountReportRecord[]
+}

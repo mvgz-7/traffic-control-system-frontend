@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import useSWR from "swr"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
@@ -9,10 +9,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Settings, Database, Server, Shield } from "lucide-react"
-import { getSettings, getHealth } from "@/lib/api"
+import { Switch } from "@/components/ui/switch"
+import { Settings, Database, Server, Shield, Cpu } from "lucide-react"
+import { getSettings, getHealth, getModelConfig, updateModelConfig } from "@/lib/api"
 import { toast } from "sonner"
-import type { AppSettings, HealthResponse } from "@/lib/types"
+import type { AppSettings, HealthResponse, ModelConfig, ModelConfigUpdateRequest } from "@/lib/types"
 import { useSearchParams } from "next/navigation"
 
 export default function SettingsPage() {
@@ -20,6 +21,8 @@ export default function SettingsPage() {
   const newIntersection = (searchParams.get("new_intersection") || "").trim()
   const [apiUrl, setApiUrl] = useState(process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000")
   const [isSaving, setIsSaving] = useState(false)
+  const [isModelSaving, setIsModelSaving] = useState(false)
+  const [modelForm, setModelForm] = useState<ModelConfigUpdateRequest>({})
 
   const formatUptime = (seconds: number) => {
     const hrs = Math.floor(seconds / 3600)
@@ -36,6 +39,23 @@ export default function SettingsPage() {
     refreshInterval: 5000,
   })
 
+  const { data: modelConfig, mutate: mutateModelConfig } = useSWR<ModelConfig>("model-config", getModelConfig, {
+    refreshInterval: 10000,
+  })
+
+  // Sync model form when config loads
+  useEffect(() => {
+    if (modelConfig?.runtime_config) {
+      setModelForm({
+        confidence_threshold: modelConfig.runtime_config.confidence_threshold,
+        iou_threshold: modelConfig.runtime_config.iou_threshold,
+        detection_size: modelConfig.runtime_config.detection_size,
+        max_detections: modelConfig.runtime_config.max_detections,
+        tta_enabled: modelConfig.runtime_config.tta_enabled,
+      })
+    }
+  }, [modelConfig])
+
   const handleSaveApiUrl = async () => {
     setIsSaving(true)
     try {
@@ -45,6 +65,19 @@ export default function SettingsPage() {
       toast.error("Failed to save API URL")
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  const handleSaveModelConfig = async (persist: boolean = false) => {
+    setIsModelSaving(true)
+    try {
+      await updateModelConfig({ ...modelForm, persist })
+      mutateModelConfig()
+      toast.success(persist ? "Model config saved and persisted to disk" : "Model config updated (runtime only)")
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to update model config")
+    } finally {
+      setIsModelSaving(false)
     }
   }
 
@@ -182,6 +215,132 @@ export default function SettingsPage() {
               </CardContent>
             </Card>
           )}
+
+          {/* YOLO Model Configuration */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Cpu className="w-5 h-5" />
+                YOLO Model Configuration
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              {/* Runtime-tunable parameters */}
+              <div className="space-y-4">
+                <p className="text-sm font-medium">Runtime Parameters <Badge variant="outline" className="ml-2 text-xs">Live — no restart needed</Badge></p>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="conf-threshold">Confidence Threshold</Label>
+                    <Input
+                      id="conf-threshold"
+                      type="number"
+                      min={0.01}
+                      max={0.99}
+                      step={0.05}
+                      value={modelForm.confidence_threshold ?? ""}
+                      onChange={(e) => setModelForm((prev) => ({ ...prev, confidence_threshold: Number(e.target.value) }))}
+                      disabled={isModelSaving}
+                    />
+                    <p className="text-xs text-muted-foreground">Min confidence to keep a detection (0.01–0.99)</p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="iou-threshold">IOU Threshold</Label>
+                    <Input
+                      id="iou-threshold"
+                      type="number"
+                      min={0.1}
+                      max={0.95}
+                      step={0.05}
+                      value={modelForm.iou_threshold ?? ""}
+                      onChange={(e) => setModelForm((prev) => ({ ...prev, iou_threshold: Number(e.target.value) }))}
+                      disabled={isModelSaving}
+                    />
+                    <p className="text-xs text-muted-foreground">Non-max suppression overlap threshold (0.1–0.95)</p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="detection-size">Detection Size</Label>
+                    <Input
+                      id="detection-size"
+                      type="number"
+                      min={320}
+                      max={1280}
+                      step={32}
+                      value={modelForm.detection_size ?? ""}
+                      onChange={(e) => setModelForm((prev) => ({ ...prev, detection_size: Number(e.target.value) }))}
+                      disabled={isModelSaving}
+                    />
+                    <p className="text-xs text-muted-foreground">Input resolution, must be multiple of 32. Higher = more accurate but slower.</p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="max-detections">Max Detections</Label>
+                    <Input
+                      id="max-detections"
+                      type="number"
+                      min={1}
+                      max={300}
+                      step={1}
+                      value={modelForm.max_detections ?? ""}
+                      onChange={(e) => setModelForm((prev) => ({ ...prev, max_detections: Number(e.target.value) }))}
+                      disabled={isModelSaving}
+                    />
+                    <p className="text-xs text-muted-foreground">Max objects per frame (1–300)</p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 p-3 bg-muted rounded-lg">
+                  <Switch
+                    id="tta-enabled"
+                    checked={modelForm.tta_enabled ?? false}
+                    onCheckedChange={(checked) => setModelForm((prev) => ({ ...prev, tta_enabled: checked }))}
+                    disabled={isModelSaving}
+                  />
+                  <div>
+                    <Label htmlFor="tta-enabled" className="cursor-pointer">Test-Time Augmentation (TTA)</Label>
+                    <p className="text-xs text-muted-foreground">Run inference at multiple scales for better accuracy. Slower.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Static parameters (read-only) */}
+              {modelConfig?.static_config && (
+                <div className="space-y-3 border-t pt-4">
+                  <p className="text-sm font-medium">Static Parameters <Badge variant="secondary" className="ml-2 text-xs">Requires restart</Badge></p>
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <div className="p-3 bg-muted rounded-lg">
+                      <p className="text-xs text-muted-foreground">Device</p>
+                      <p className="font-semibold text-sm">{modelConfig.static_config.device}</p>
+                    </div>
+                    <div className="p-3 bg-muted rounded-lg">
+                      <p className="text-xs text-muted-foreground">Half Precision (FP16)</p>
+                      <p className="font-semibold text-sm">{modelConfig.static_config.half_precision ? "Enabled" : "Disabled"}</p>
+                    </div>
+                    <div className="p-3 bg-muted rounded-lg">
+                      <p className="text-xs text-muted-foreground">Tracking</p>
+                      <p className="font-semibold text-sm">{modelConfig.static_config.tracking_enabled ? modelConfig.static_config.tracker_type : "Disabled"}</p>
+                    </div>
+                    <div className="p-3 bg-muted rounded-lg">
+                      <p className="text-xs text-muted-foreground">Model Path</p>
+                      <p className="font-semibold text-sm break-all">{modelConfig.static_config.model_path}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Save buttons */}
+              <div className="flex gap-2 pt-2">
+                <Button onClick={() => handleSaveModelConfig(false)} disabled={isModelSaving} className="flex-1">
+                  {isModelSaving ? "Saving..." : "Apply (Runtime Only)"}
+                </Button>
+                <Button onClick={() => handleSaveModelConfig(true)} disabled={isModelSaving} variant="outline" className="flex-1">
+                  {isModelSaving ? "Saving..." : "Apply & Persist to Disk"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Database Info */}
           <Card>

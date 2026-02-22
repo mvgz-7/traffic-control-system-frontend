@@ -6,8 +6,8 @@ import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { listIntersections, getLineCounts } from "@/lib/api"
-import type { IntersectionSummary } from "@/lib/types"
+import { listIntersections, getLineCounts, getVehicleCountReport } from "@/lib/api"
+import type { IntersectionSummary, VehicleCountReportRecord } from "@/lib/types"
 import jsPDF from "jspdf"
 import autoTable from "jspdf-autotable"
 
@@ -301,34 +301,46 @@ export default function AnalyticsPage() {
     }
   }, [intersections])
 
-  // Fetch hourly totals for each intersection (past 24 hours, refreshed every 30s)
+  // Fetch hourly totals using server-side aggregation (single API call per intersection)
   useEffect(() => {
     if (!intersections?.length) return
     let cancelled = false
 
     async function fetchHourly() {
+      const now = new Date()
+      const currentHourStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0)
+      const start24h = currentHourStart.getTime() / 1000 - 23 * 3600
+      const endTs = currentHourStart.getTime() / 1000 + 3600
       const windows = getHourlyWindows(24)
+
       const results: Record<string, HourlyTotal[]> = {}
 
       for (const ix of intersections!) {
-        const rows: HourlyTotal[] = []
-        for (const w of windows) {
-          try {
-            const data = await getLineCounts(ix.id, w.start, w.end)
-            let total = 0
-            if (data?.counts) {
-              for (const classCounts of Object.values(data.counts) as Record<string, number>[]) {
-                for (const count of Object.values(classCounts)) {
-                  total += Number(count) || 0
-                }
-              }
-            }
-            rows.push({ hour: w.label, hourStart: w.start, total })
-          } catch {
-            rows.push({ hour: w.label, hourStart: w.start, total: 0 })
+        try {
+          // Single API call replaces 24 separate calls
+          const report = await getVehicleCountReport(ix.id, start24h, endTs, "hour")
+          // Group report records by period and sum counts
+          const periodTotals: Record<string, number> = {}
+          for (const record of report.data || []) {
+            periodTotals[record.period] = (periodTotals[record.period] || 0) + record.count
           }
+
+          // Map windows to totals (match by hour start)
+          const rows: HourlyTotal[] = windows.map((w) => {
+            // Try to match period string to window
+            const hourDate = new Date(w.start * 1000)
+            // Backend period format: "YYYY-MM-DD HH:00"
+            const periodKey = `${hourDate.getFullYear()}-${String(hourDate.getMonth() + 1).padStart(2, "0")}-${String(hourDate.getDate()).padStart(2, "0")} ${String(hourDate.getHours()).padStart(2, "0")}:00`
+            return {
+              hour: w.label,
+              hourStart: w.start,
+              total: periodTotals[periodKey] || 0,
+            }
+          })
+          results[ix.id] = rows
+        } catch {
+          results[ix.id] = windows.map((w) => ({ hour: w.label, hourStart: w.start, total: 0 }))
         }
-        results[ix.id] = rows
       }
 
       if (!cancelled) setHourlyByIntersection(results)

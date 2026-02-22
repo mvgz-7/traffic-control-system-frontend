@@ -228,9 +228,11 @@ export function VideoFeedWebSocket({ intersectionId, onFrame }: VideoFeedWebSock
             // If resize/transition is in progress, skip drawing for a short time
             if (resizingRef.current) {
               // still surface metadata but skip draw
-              try {
-                onFrame && onFrame(message)
-              } catch (e) {}
+              if (!cancelled) {
+                try {
+                  onFrame && onFrame(message)
+                } catch (e) {}
+              }
               return
             }
 
@@ -286,10 +288,13 @@ export function VideoFeedWebSocket({ intersectionId, onFrame }: VideoFeedWebSock
             }
 
             // Surface metadata to parent (lane counts, fps, vac status, camera health)
-            try {
-              onFrame && onFrame(message)
-            } catch (e) {
-              console.warn("onFrame callback failed", e)
+            // Guard with cancelled flag to prevent stale cross-intersection updates
+            if (!cancelled) {
+              try {
+                onFrame && onFrame(message)
+              } catch (e) {
+                console.warn("onFrame callback failed", e)
+              }
             }
           }
         } catch (err) {

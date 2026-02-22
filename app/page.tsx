@@ -36,6 +36,12 @@ export default function DashboardPage() {
     }
   }, [intersections, selectedIntersection])
 
+  // Clear live state when intersection changes to prevent stale cross-intersection data
+  useEffect(() => {
+    setLiveVacStatus(null)
+    setLiveLineCounts(null)
+  }, [selectedIntersection])
+
   const handleFrame = useCallback((msg: any) => {
     try {
       if (msg?.vac_status) setLiveVacStatus(msg.vac_status)

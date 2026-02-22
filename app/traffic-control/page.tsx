@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import useSWR from "swr"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
@@ -18,8 +18,9 @@ import {
   getIntersectionStatus,
   emergencyStop,
   forceGreen,
+  getStatusStreamUrl,
 } from "@/lib/api"
-import type { IntersectionSummary, IntersectionStatus, LaneConfig, LaneConfigUpdate } from "@/lib/types"
+import type { IntersectionSummary, IntersectionStatus, LaneConfig, LaneConfigUpdate, StatusMessage } from "@/lib/types"
 import { VideoFeedWebSocket } from "@/components/dashboard/video-feed"
 import { VehicleSummary } from "@/components/dashboard/vehicle-summary"
 import { IntersectionSelector } from "@/components/dashboard/intersection-selector"
@@ -101,11 +102,63 @@ export default function TrafficControlPage() {
     refreshInterval: 5000,
   })
 
-  const { data: status } = useSWR<IntersectionStatus>(
-    selectedId ? [`vac-status`, selectedId] : null,
-    selectedId ? () => getIntersectionStatus(selectedId) : null,
-    { refreshInterval: 500 }
-  )
+  // Use status_feed WebSocket instead of 500ms REST polling
+  const [status, setStatus] = useState<IntersectionStatus | null>(null)
+  const wsRef = useRef<WebSocket | null>(null)
+  const reconnectRef = useRef<{ attempts: number }>({ attempts: 0 })
+
+  useEffect(() => {
+    if (!selectedId) {
+      setStatus(null)
+      return
+    }
+
+    let cancelled = false
+    const streamUrl = getStatusStreamUrl(selectedId)
+
+    // Initial REST fetch for immediate data
+    getIntersectionStatus(selectedId).then((s) => {
+      if (!cancelled) setStatus(s)
+    }).catch(() => {})
+
+    const connect = () => {
+      if (cancelled) return
+      const ws = new WebSocket(streamUrl)
+      wsRef.current = ws
+
+      ws.onopen = () => {
+        reconnectRef.current.attempts = 0
+      }
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data) as StatusMessage
+          if (msg.type === "status" && msg.vac_status) {
+            if (!cancelled) setStatus(msg.vac_status as IntersectionStatus)
+          }
+        } catch {}
+      }
+
+      ws.onerror = () => {}
+
+      ws.onclose = () => {
+        if (cancelled) return
+        reconnectRef.current.attempts += 1
+        const delay = Math.min(10000, 1000 * 2 ** Math.min(reconnectRef.current.attempts, 5))
+        setTimeout(() => { if (!cancelled) connect() }, delay)
+      }
+    }
+
+    connect()
+
+    return () => {
+      cancelled = true
+      try {
+        const ws = wsRef.current
+        if (ws && ws.readyState === WebSocket.OPEN) ws.close()
+      } catch {}
+    }
+  }, [selectedId])
 
   // Fetch per-lane config when a lane is selected
   const { data: laneConfig, mutate: mutateLaneConfig } = useSWR<LaneConfig>(

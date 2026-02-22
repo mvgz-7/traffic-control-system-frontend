@@ -20,9 +20,10 @@ import {
   stopProcessing,
   getHealth,
   getHealthMetrics,
+  getHealthComponents,
   emergencyStop,
 } from "@/lib/api"
-import type { IntersectionSummary, ProcessingStatus, CameraHealthResponse, HealthResponse, HealthMetricPoint } from "@/lib/types"
+import type { IntersectionSummary, ProcessingStatus, CameraHealthResponse, HealthResponse, HealthMetricPoint, HealthComponent } from "@/lib/types"
 import {
   ResponsiveContainer,
   LineChart,
@@ -79,6 +80,13 @@ export default function SystemMonitorPage() {
   const { data: fpsHistory } = useSWR<HealthMetricPoint[]>(
     "health-fps-history",
     () => getHealthMetrics("fps", 300),
+    { refreshInterval: 10000, fallbackData: [] }
+  )
+
+  // Detailed component health breakdown
+  const { data: healthComponents } = useSWR<HealthComponent[]>(
+    "health-components",
+    getHealthComponents,
     { refreshInterval: 10000, fallbackData: [] }
   )
 
@@ -302,6 +310,37 @@ export default function SystemMonitorPage() {
               </CardContent>
             </Card>
           </div>
+
+          {/* Component Health Breakdown */}
+          {healthComponents && healthComponents.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-sm">Component Health</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+                  {healthComponents.map((comp) => {
+                    const statusStr = String(comp.status).toUpperCase()
+                    const isHealthy = statusStr === "HEALTHY"
+                    const isDegraded = statusStr === "DEGRADED"
+                    return (
+                      <div key={comp.component} className="flex items-start gap-3 p-3 bg-muted rounded-lg">
+                        <div className={`mt-0.5 w-2.5 h-2.5 rounded-full shrink-0 ${isHealthy ? "bg-green-500" : isDegraded ? "bg-amber-500" : "bg-red-500"}`} />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium">{comp.component}</p>
+                          <p className="text-xs text-muted-foreground truncate">{comp.message}</p>
+                          {comp.alert_count > 0 && (
+                            <Badge variant="destructive" className="mt-1 text-xs">{comp.alert_count} alert{comp.alert_count > 1 ? "s" : ""}</Badge>
+                          )}
+                        </div>
+                        <Badge variant={isHealthy ? "default" : isDegraded ? "secondary" : "destructive"} className="text-xs shrink-0">{comp.status}</Badge>
+                      </div>
+                    )
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Camera Source Management + Camera Health */}
           <div className="grid gap-6 lg:grid-cols-2 items-start">

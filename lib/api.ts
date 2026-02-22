@@ -12,11 +12,16 @@ import type {
   HealthResponse,
   HealthAlert,
   HealthMetricPoint,
+  HealthComponent,
   AppSettings,
   CameraDevice,
   UploadedVideo,
   SourceAssignmentResponse,
   DecisionLogEntry,
+  ModelConfig,
+  ModelConfigUpdateRequest,
+  ModelConfigUpdateResponse,
+  VehicleCountReport,
 } from "./types"
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"
@@ -44,13 +49,29 @@ export async function getHealthAlerts(): Promise<HealthAlert[]> {
   return (alerts || []).map((a: any) => ({ ...a, severity: String(a.severity || a.severity).toLowerCase() }))
 }
 
+export async function getHealthComponents(): Promise<HealthComponent[]> {
+  const response = await fetch(`${API_V1}/health/components`)
+  if (!response.ok) throw new Error("Failed to fetch health components")
+  return response.json()
+}
+
+export async function getHealthMetrics(metricName: string, duration: number = 300): Promise<HealthMetricPoint[]> {
+  const response = await fetch(`${API_V1}/health/metrics/${metricName}?duration=${duration}`)
+  if (!response.ok) throw new Error(`Failed to fetch metric ${metricName}`)
+  return response.json()
+}
+
 export async function getDecisionLog(intersectionId: string, limit: number = 50): Promise<DecisionLogEntry[]> {
   const url = new URL(`${API_V1}/system/decision-log`)
   url.searchParams.set("intersection_id", intersectionId)
   url.searchParams.set("limit", String(limit))
-  const response = await fetch(url.toString())
-  if (!response.ok) throw new Error("Failed to fetch decision log")
-  return response.json()
+  try {
+    const response = await fetch(url.toString())
+    if (!response.ok) return []  // Backend may 500 due to serialization issues — degrade gracefully
+    return await response.json()
+  } catch {
+    return []
+  }
 }
 
 // ===== Intersection Endpoints =====
@@ -298,18 +319,46 @@ export async function resetLineCounts(intersectionId: string): Promise<any> {
   return response.json()
 }
 
-// ===== Health Metrics (historical time-series) =====
+// ===== Vehicle count report (server-side aggregation) =====
 
-export async function getHealthMetrics(metricName: string, duration: number = 300): Promise<HealthMetricPoint[]> {
-  const response = await fetch(`${API_V1}/health/metrics/${metricName}?duration=${duration}`)
-  if (!response.ok) throw new Error(`Failed to fetch health metric: ${metricName}`)
-  const data = await response.json()
-  // Backend may return { metric, duration, data_points: [...] } or an array directly
-  return data?.data_points || data || []
-}
-
-export async function getHealthComponents(): Promise<Array<{ component: string; status: string; message?: string; alert_count?: number }>> {
-  const response = await fetch(`${API_V1}/health/components`)
-  if (!response.ok) throw new Error("Failed to fetch health components")
+export async function getVehicleCountReport(
+  intersectionId: string,
+  start: number,
+  end: number,
+  interval: "minute" | "hour" = "minute"
+): Promise<VehicleCountReport> {
+  const url = new URL(`${API_V1}/intersections/${intersectionId}/reports/vehicle-counts`)
+  url.searchParams.set("start", String(start))
+  url.searchParams.set("end", String(end))
+  url.searchParams.set("interval", interval)
+  const response = await fetch(url.toString())
+  if (!response.ok) throw new Error(`Failed to fetch vehicle count report for ${intersectionId}`)
   return response.json()
 }
+
+// ===== Model config endpoints =====
+
+export async function getModelConfig(): Promise<ModelConfig> {
+  const response = await fetch(`${API_V1}/model/config`)
+  if (!response.ok) throw new Error("Failed to fetch model config")
+  return response.json()
+}
+
+export async function updateModelConfig(update: ModelConfigUpdateRequest): Promise<ModelConfigUpdateResponse> {
+  const response = await fetch(`${API_V1}/model/config`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(update),
+  })
+  if (!response.ok) {
+    let detail = "Failed to update model config"
+    try {
+      const err = await response.json()
+      detail = err.detail || err.message || JSON.stringify(err)
+    } catch (_) {}
+    throw new Error(detail)
+  }
+  return response.json()
+}
+
+

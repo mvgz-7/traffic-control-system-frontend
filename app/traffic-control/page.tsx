@@ -368,6 +368,67 @@ export default function TrafficControlPage() {
                   </CardContent>
                 </Card>
 
+                {/* Current Per-Lane Status */}
+                <Card className="flex flex-col">
+                  <CardHeader>
+                    <CardTitle>Current Lane Status</CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex-1">
+                    <div className="grid grid-cols-3 gap-3 h-full">
+                      {laneIds.map((laneId) => {
+                        const lane = status.lanes[laneId]
+                        if (!lane) return null
+                        const stateUpper = String(lane.state ?? "").toUpperCase()
+                        return (
+                          <div key={laneId} className="rounded-lg border p-4 flex flex-col items-center gap-3">
+                            <span className="font-semibold text-sm">{laneId}</span>
+                            {/* Traffic light indicator */}
+                            <div className="w-14 p-2 bg-black rounded-lg flex flex-col items-center gap-2">
+                              <div
+                                className={`w-9 h-9 rounded-full ${stateUpper === "ALL_RED" || stateUpper === "RED" ? "bg-red-500 ring-2 ring-red-400" : "bg-gray-700"}`}
+                                style={{ boxShadow: stateUpper === "ALL_RED" || stateUpper === "RED" ? "0 0 12px rgba(239,68,68,0.6)" : undefined }}
+                              />
+                              <div
+                                className={`w-9 h-9 rounded-full ${stateUpper === "YELLOW" ? "bg-yellow-400 ring-2 ring-yellow-300" : "bg-gray-700"}`}
+                                style={{ boxShadow: stateUpper === "YELLOW" ? "0 0 12px rgba(234,179,8,0.45)" : undefined }}
+                              />
+                              <div
+                                className={`w-9 h-9 rounded-full ${stateUpper === "GREEN" ? "bg-green-500 ring-2 ring-green-300" : "bg-gray-700"}`}
+                                style={{ boxShadow: stateUpper === "GREEN" ? "0 0 12px rgba(34,197,94,0.45)" : undefined }}
+                              />
+                            </div>
+                            <Badge
+                              variant={stateUpper === "GREEN" ? "default" : stateUpper === "YELLOW" ? "secondary" : "destructive"}
+                              className="text-xs"
+                            >
+                              {lane.state}
+                            </Badge>
+                            <div className="w-full space-y-1.5 text-xs">
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">Elapsed</span>
+                                <span className="font-medium tabular-nums">{typeof lane.elapsed === "number" ? `${lane.elapsed.toFixed(1)}s` : "-"}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">Gap</span>
+                                <span className="font-medium tabular-nums">{typeof lane.gap === "number" ? `${lane.gap.toFixed(2)}s` : "-"}</span>
+                              </div>
+                              {typeof lane.vehicles_this_green === "number" && (
+                                <div className="flex justify-between">
+                                  <span className="text-muted-foreground">Vehicles</span>
+                                  <span className="font-medium tabular-nums">{lane.vehicles_this_green}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Lane Configuration + Guidelines */}
+              <div className="grid gap-6 lg:grid-cols-2 items-stretch">
               {/* Lane Configuration */}
                 <Card>
                   <CardHeader>
@@ -473,67 +534,6 @@ export default function TrafficControlPage() {
                         </div>
                       </>
                     )}
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Current Lane Status + Guidelines */}
-              <div className="grid gap-6 lg:grid-cols-2 items-stretch">
-                {/* Current Per-Lane Status */}
-                <Card className="flex flex-col">
-                  <CardHeader>
-                    <CardTitle>Current Lane Status</CardTitle>
-                  </CardHeader>
-                  <CardContent className="flex-1">
-                    <div className="grid grid-cols-3 gap-3 h-full">
-                      {laneIds.map((laneId) => {
-                        const lane = status.lanes[laneId]
-                        if (!lane) return null
-                        const stateUpper = String(lane.state ?? "").toUpperCase()
-                        return (
-                          <div key={laneId} className="rounded-lg border p-4 flex flex-col items-center gap-3">
-                            <span className="font-semibold text-sm">{laneId}</span>
-                            {/* Traffic light indicator */}
-                            <div className="w-14 p-2 bg-black rounded-lg flex flex-col items-center gap-2">
-                              <div
-                                className={`w-9 h-9 rounded-full ${stateUpper === "ALL_RED" || stateUpper === "RED" ? "bg-red-500 ring-2 ring-red-400" : "bg-gray-700"}`}
-                                style={{ boxShadow: stateUpper === "ALL_RED" || stateUpper === "RED" ? "0 0 12px rgba(239,68,68,0.6)" : undefined }}
-                              />
-                              <div
-                                className={`w-9 h-9 rounded-full ${stateUpper === "YELLOW" ? "bg-yellow-400 ring-2 ring-yellow-300" : "bg-gray-700"}`}
-                                style={{ boxShadow: stateUpper === "YELLOW" ? "0 0 12px rgba(234,179,8,0.45)" : undefined }}
-                              />
-                              <div
-                                className={`w-9 h-9 rounded-full ${stateUpper === "GREEN" ? "bg-green-500 ring-2 ring-green-300" : "bg-gray-700"}`}
-                                style={{ boxShadow: stateUpper === "GREEN" ? "0 0 12px rgba(34,197,94,0.45)" : undefined }}
-                              />
-                            </div>
-                            <Badge
-                              variant={stateUpper === "GREEN" ? "default" : stateUpper === "YELLOW" ? "secondary" : "destructive"}
-                              className="text-xs"
-                            >
-                              {lane.state}
-                            </Badge>
-                            <div className="w-full space-y-1.5 text-xs">
-                              <div className="flex justify-between">
-                                <span className="text-muted-foreground">Elapsed</span>
-                                <span className="font-medium tabular-nums">{typeof lane.elapsed === "number" ? `${lane.elapsed.toFixed(1)}s` : "-"}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className="text-muted-foreground">Gap</span>
-                                <span className="font-medium tabular-nums">{typeof lane.gap === "number" ? `${lane.gap.toFixed(2)}s` : "-"}</span>
-                              </div>
-                              {typeof lane.vehicles_this_green === "number" && (
-                                <div className="flex justify-between">
-                                  <span className="text-muted-foreground">Vehicles</span>
-                                  <span className="font-medium tabular-nums">{lane.vehicles_this_green}</span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
                   </CardContent>
                 </Card>
 

@@ -10,7 +10,6 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { toast } from "sonner"
 import { Cpu, HardDrive, MemoryStick, Timer, CheckCircle, XCircle, Play, Square, ShieldAlert } from "lucide-react"
-import { CameraSourceManager } from "@/components/dashboard/camera-source-manager"
 import { IntersectionSelector } from "@/components/dashboard/intersection-selector"
 import {
   listIntersections,
@@ -342,51 +341,7 @@ export default function SystemMonitorPage() {
             </Card>
           )}
 
-          {/* Camera Source Management + Camera Health */}
-          <div className="grid gap-6 lg:grid-cols-2 items-start">
-            <div className="h-full">
-              {selectedIntersectionId && <CameraSourceManager intersectionId={selectedIntersectionId} />}
-            </div>
-
-            <Card className="h-full">
-              <CardHeader>
-                <CardTitle>Camera Health</CardTitle>
-                <CardDescription>Connected cameras status</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {selectedIntersectionId && cameraHealth && Object.entries(cameraHealth).length > 0 ? (
-                  Object.entries(cameraHealth).map(([cameraId, cam]) => {
-                    const camSt = String(cam.status ?? "").toLowerCase()
-                    const isCamErr = camSt === "error" || camSt === "failed"
-                    return (
-                    <div key={cameraId} className="flex items-center justify-between p-2 bg-muted rounded-lg">
-                      <div className="flex items-center gap-2">
-                        {cam.alive ? (
-                          <CheckCircle className="w-4 h-4 text-green-600" />
-                        ) : (
-                          <XCircle className={`w-4 h-4 ${isCamErr ? "text-red-600" : "text-muted-foreground"}`} />
-                        )}
-                        <div>
-                          <p className="text-sm font-medium">{cameraId}</p>
-                          <p className="text-xs text-muted-foreground">
-                            {cam.fps_actual?.toFixed(1) ?? "0"} / {cam.fps_expected} FPS
-                            {cam.approach && ` • ${cam.approach}`}
-                          </p>
-                        </div>
-                      </div>
-                      <Badge variant={cam.alive ? "default" : isCamErr ? "destructive" : "secondary"}>{cam.status}</Badge>
-                    </div>
-                  )})
-                ) : selectedIntersectionId ? (
-                  <p className="text-sm text-muted-foreground">No cameras connected</p>
-                ) : (
-                  <p className="text-sm text-muted-foreground">Select an intersection to view camera health</p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Processing Control + Emergency + System Logs */}
+          {/* Processing Control + Camera Health */}
           <div className="grid gap-6 lg:grid-cols-2 items-start">
             {/* Processing Control */}
             {selectedIntersectionId ? (
@@ -463,47 +418,85 @@ export default function SystemMonitorPage() {
               </Card>
             )}
 
-            {/* System Logs */}
-            <Card>
+            {/* Camera Health */}
+            <Card className="h-full">
               <CardHeader>
-                <CardTitle>System Logs</CardTitle>
-                <CardDescription>Recent system events and notifications</CardDescription>
+                <CardTitle>Camera Health</CardTitle>
+                <CardDescription>Connected cameras status</CardDescription>
               </CardHeader>
-              <CardContent>
-                <div className="max-h-64 space-y-2 overflow-y-auto">
-                  {logs.length > 0 ? (
-                    logs.map((log) => (
-                      <div
-                        key={log.id}
-                        className="flex items-start gap-3 rounded-lg border border-border bg-secondary/30 p-3"
-                      >
-                        <Badge
-                          variant="outline"
-                          className={`mt-0.5 ${
-                            log.level === "error"
-                              ? "border-status-error text-status-error"
-                              : log.level === "warning"
-                                ? "border-status-warning text-status-warning"
-                                : "border-status-active text-status-active"
-                          }`}
-                        >
-                          {log.level.toUpperCase()}
-                        </Badge>
-                        <div className="flex-1">
-                          <p className="text-sm">{log.message}</p>
-                          <p className="text-xs text-muted-foreground">{log.timestamp.toLocaleTimeString()}</p>
+              <CardContent className="space-y-3">
+                {selectedIntersectionId && cameraHealth && Object.entries(cameraHealth).length > 0 ? (
+                  Object.entries(cameraHealth).map(([cameraId, cam]) => {
+                    const camSt = String(cam.status ?? "").toLowerCase()
+                    const isCamErr = camSt === "error" || camSt === "failed"
+                    return (
+                    <div key={cameraId} className="flex items-center justify-between p-2 bg-muted rounded-lg">
+                      <div className="flex items-center gap-2">
+                        {cam.alive ? (
+                          <CheckCircle className="w-4 h-4 text-green-600" />
+                        ) : (
+                          <XCircle className={`w-4 h-4 ${isCamErr ? "text-red-600" : "text-muted-foreground"}`} />
+                        )}
+                        <div>
+                          <p className="text-sm font-medium">{cameraId}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {cam.fps_actual?.toFixed(1) ?? "0"} / {cam.fps_expected} FPS
+                            {cam.approach && ` • ${cam.approach}`}
+                          </p>
                         </div>
                       </div>
-                    ))
-                  ) : (
-                    <p className="text-center text-muted-foreground py-8">
-                      No logs yet. System events will appear here.
-                    </p>
-                  )}
-                </div>
+                      <Badge variant={cam.alive ? "default" : isCamErr ? "destructive" : "secondary"}>{cam.status}</Badge>
+                    </div>
+                  )})
+                ) : selectedIntersectionId ? (
+                  <p className="text-sm text-muted-foreground">No cameras connected</p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Select an intersection to view camera health</p>
+                )}
               </CardContent>
             </Card>
           </div>
+
+          {/* System Logs — full width */}
+          <Card>
+            <CardHeader>
+              <CardTitle>System Logs</CardTitle>
+              <CardDescription>Recent system events and notifications</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="max-h-64 space-y-2 overflow-y-auto">
+                {logs.length > 0 ? (
+                  logs.map((log) => (
+                    <div
+                      key={log.id}
+                      className="flex items-start gap-3 rounded-lg border border-border bg-secondary/30 p-3"
+                    >
+                      <Badge
+                        variant="outline"
+                        className={`mt-0.5 ${
+                          log.level === "error"
+                            ? "border-status-error text-status-error"
+                            : log.level === "warning"
+                              ? "border-status-warning text-status-warning"
+                              : "border-status-active text-status-active"
+                        }`}
+                      >
+                        {log.level.toUpperCase()}
+                      </Badge>
+                      <div className="flex-1">
+                        <p className="text-sm">{log.message}</p>
+                        <p className="text-xs text-muted-foreground">{log.timestamp.toLocaleTimeString()}</p>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-center text-muted-foreground py-8">
+                    No logs yet. System events will appear here.
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </main>
     </div>

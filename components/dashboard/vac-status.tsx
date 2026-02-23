@@ -54,7 +54,7 @@ export function VACStatusDisplay({ intersectionId, liveStatus }: VACStatusDispla
     return (
       <Card>
         <CardHeader>
-          <CardTitle>VAC Status</CardTitle>
+          <CardTitle>Current Lane Status</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center py-8">
@@ -69,10 +69,10 @@ export function VACStatusDisplay({ intersectionId, liveStatus }: VACStatusDispla
     return (
       <Card>
         <CardHeader>
-          <CardTitle>VAC Status</CardTitle>
+          <CardTitle>Current Lane Status</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-destructive">Failed to load VAC status</p>
+          <p className="text-sm text-destructive">Failed to load status</p>
         </CardContent>
       </Card>
     )
@@ -97,7 +97,7 @@ export function VACStatusDisplay({ intersectionId, liveStatus }: VACStatusDispla
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <span className="inline-block h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-          VAC Status
+          Current Lane Status
         </CardTitle>
       </CardHeader>
       <CardContent>

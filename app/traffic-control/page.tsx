@@ -89,6 +89,7 @@ function NumberField({
 export default function TrafficControlPage() {
   const [selectedId, setSelectedId] = useState("")
   const [isUpdating, setIsUpdating] = useState(false)
+  const [isEmergencyActive, setIsEmergencyActive] = useState(false)
   const [selectedLane, setSelectedLane] = useState("")
   const [formData, setFormData] = useState<LaneConfigUpdate>({
     max_gap: 3.0,
@@ -226,14 +227,22 @@ export default function TrafficControlPage() {
     }
   }
 
-  const handleEmergencyStop = async () => {
+  const handleEmergencyToggle = async () => {
     if (!selectedId) return
     setIsUpdating(true)
     try {
-      await emergencyStop(selectedId)
-      toast.success("EMERGENCY STOP — All lanes forced RED")
+      if (!isEmergencyActive) {
+        await emergencyStop(selectedId)
+        setIsEmergencyActive(true)
+        toast.success("EMERGENCY STOP — All lanes forced RED")
+      } else {
+        // Restore normal operation by resetting controller to startup state
+        await resetIntersection(selectedId)
+        setIsEmergencyActive(false)
+        toast.success("Emergency cleared — Controller reset")
+      }
     } catch (error) {
-      toast.error("Failed to execute emergency stop")
+      toast.error(isEmergencyActive ? "Failed to clear emergency" : "Failed to execute emergency stop")
       console.error(error)
     } finally {
       setIsUpdating(false)
@@ -307,13 +316,13 @@ export default function TrafficControlPage() {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <Button
-                      variant="destructive"
-                      className="w-full text-lg py-6 font-bold"
-                      onClick={handleEmergencyStop}
+                      variant={isEmergencyActive ? "default" : "destructive"}
+                      className={`w-full text-lg py-6 font-bold ${isEmergencyActive ? "bg-emerald-600 text-white hover:bg-emerald-700" : ""}`}
+                      onClick={handleEmergencyToggle}
                       disabled={isUpdating || !selectedId}
                     >
-                      <ShieldAlert className="w-5 h-5 mr-2" />
-                      EMERGENCY STOP — ALL RED
+                      <ShieldAlert className={`w-5 h-5 mr-2 ${isEmergencyActive ? "text-white" : ""}`} />
+                      {isEmergencyActive ? "Clear Emergency — Resume" : "EMERGENCY STOP — ALL RED"}
                     </Button>
                     <p className="text-xs text-muted-foreground">
                       Forces all lanes to RED immediately. Use in case of emergency or system malfunction.

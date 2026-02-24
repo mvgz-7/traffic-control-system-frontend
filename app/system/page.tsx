@@ -33,6 +33,7 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts"
+import { Info } from "lucide-react"
 
 interface SystemLog {
   id: string
@@ -342,11 +343,8 @@ export default function SystemMonitorPage() {
             </Card>
           )}
 
-          {/* Camera Source Management + Camera Health */}
-          <div className="grid gap-6 lg:grid-cols-2 items-start">
-            <div className="h-full">
-              {selectedIntersectionId && <CameraSourceManager intersectionId={selectedIntersectionId} />}
-            </div>
+          {/* Camera Health */}
+          <div className="grid gap-6 items-start">
 
             <Card className="h-full">
               <CardHeader>
@@ -463,7 +461,42 @@ export default function SystemMonitorPage() {
               </Card>
             )}
 
-            {/* System Logs */}
+            {/* Camera Source Manager Notice */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Info className="w-5 h-5" />
+                Camera Source Management
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-950">
+                <p className="text-sm font-medium text-blue-900 dark:text-blue-100">Camera Source Settings</p>
+                <p className="text-sm text-blue-700 dark:text-blue-300 mt-2">
+                  To assign sources to camera,
+                  please contact the <span className="font-semibold">Development Team</span>.
+                </p>
+                <p className="text-xs text-blue-600 dark:text-blue-400 mt-3">
+                  These settings require technical expertise.
+                  Unauthorized changes may compromise system safety.
+                </p>
+              </div>
+              <div className="rounded-lg border border-muted p-4">
+                <p className="text-sm font-medium">Contact Information:</p>
+                <div className="mt-2 space-y-1 text-sm text-muted-foreground">
+                  <p><span className="font-medium text-foreground">johnfrancis.vargas.13@gmail.com</span></p>
+                  <p><span className="font-medium text-foreground">jonhmikaelj@gmail.com</span></p>
+                  <p><span className="font-medium text-foreground">mariavirlaeliza@gmail.com</span></p>
+                  <p><span className="font-medium text-foreground">piaangelamacapagal@gmail.com</span></p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+            
+          </div>
+
+          {/* System Logs */}
             <Card>
               <CardHeader>
                 <CardTitle>System Logs</CardTitle>
@@ -503,7 +536,6 @@ export default function SystemMonitorPage() {
                 </div>
               </CardContent>
             </Card>
-          </div>
         </div>
       </main>
     </div>

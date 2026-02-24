@@ -301,7 +301,8 @@ export default function AnalyticsPage() {
 
         const rows: HourlyTotal[] = windows.map((w) => {
           const hourDate = new Date(w.start * 1000)
-          const periodKey = `${hourDate.getFullYear()}-${String(hourDate.getMonth() + 1).padStart(2, "0")}-${String(hourDate.getDate()).padStart(2, "0")} ${String(hourDate.getHours()).padStart(2, "0")}:00`
+          // Match backend strftime format: YYYY-MM-DDTHH:00:00
+          const periodKey = `${hourDate.getFullYear()}-${String(hourDate.getMonth() + 1).padStart(2, "0")}-${String(hourDate.getDate()).padStart(2, "0")}T${String(hourDate.getHours()).padStart(2, "0")}:00:00`
           return { hour: w.label, hourStart: w.start, total: periodTotals[periodKey] || 0 }
         })
 

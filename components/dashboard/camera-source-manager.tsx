@@ -213,71 +213,7 @@ export function CameraSourceManager({ intersectionId }: CameraSourceManagerProps
           </div>
         </div>
       
-        <div className="mt-4 rounded-lg border-2 p-4">
-          <div className="mb-3 flex items-center justify-between gap-3">
-            <p className="font-semibold text-sm">Camera Slots Status</p>
-            <Badge variant="outline" className="text-xs">
-              {intersectionId}
-            </Badge>
-          </div>
-
-          {intersectionCameras ? (
-            <div className="grid gap-2">
-              {(() => {
-                // Show all cameras (lane cameras + overview)
-                const allCamIds: string[] = Object.keys(intersectionCameras)
-                return allCamIds.map((camId) => {
-                  const cam = intersectionCameras[camId]
-                  const status = cam?.status
-                  const s = status?.toString().toLowerCase() ?? ""
-                  const isRunning = s === "running"
-                  // Only show error/failed if a source was actually assigned (frames_read > 0 or fps > 0)
-                  const hasBeenAssigned = (cam?.frames_read ?? 0) > 0 || (cam?.fps_actual ?? 0) > 0
-                  const isError = (s === "error" || s === "failed") && hasBeenAssigned
-                  const isIdle = !isRunning && !isError
-                  const slotClass = isRunning
-                    ? "border-primary/30 bg-primary/5"
-                    : isError
-                      ? "border-destructive/30 bg-destructive/5"
-                      : "border-border bg-muted/40"
-                  const dotClass = isRunning
-                    ? "bg-[color:var(--status-active)]"
-                    : isError
-                      ? "bg-destructive"
-                      : "bg-muted-foreground/40"
-                  const badgeVariant = isRunning ? "success" as const : isError ? "destructive" as const : "secondary" as const
-                  const displayStatus = isIdle ? "idle" : (status ?? "unknown")
-
-                  return (
-                    <div
-                      key={camId}
-                      className={
-                        "flex items-center justify-between gap-3 rounded-lg border px-3 py-2 " + slotClass
-                      }
-                    >
-                      <p className="font-medium text-sm">{camId}</p>
-                      <div className="flex items-center gap-2">
-                        {cam?.approach && (
-                          <span className="text-xs text-muted-foreground">{cam.approach}</span>
-                        )}
-                        <span
-                          className={
-                            "inline-block h-2 w-2 rounded-full " + dotClass
-                          }
-                        />
-                        <Badge variant={badgeVariant} className="text-xs">
-                          {displayStatus}
-                        </Badge>
-                      </div>
-                    </div>
-                  )
-                })
-              })()}
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">Loading camera slots...</p>
-          )}
-        </div>
+        {/* Camera Slots Status removed per UI update request */}
       </CardContent>
     </Card>
   )

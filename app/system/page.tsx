@@ -21,7 +21,9 @@ import {
   getHealthMetrics,
   getHealthComponents,
   emergencyStop,
+  getDecisionLog,
 } from "@/lib/api"
+import { CameraSourceManager } from "@/components/dashboard/camera-source-manager"
 import type { IntersectionSummary, ProcessingStatus, CameraHealthResponse, HealthResponse, HealthMetricPoint, HealthComponent } from "@/lib/types"
 import {
   ResponsiveContainer,
@@ -101,6 +103,42 @@ export default function SystemMonitorPage() {
       ...prev.slice(0, 49),
     ])
   }
+
+  // Poll server-side decision log and merge into local logs
+  useEffect(() => {
+    if (!selectedIntersectionId) return
+    let cancelled = false
+
+    async function fetchDecisionLogs() {
+      try {
+        const data = await getDecisionLog(selectedIntersectionId, 50)
+        if (cancelled || !Array.isArray(data)) return
+
+        const mapped = data.map((d: any) => ({
+          id: `${d.timestamp}-${d.phase}-${d.action}`,
+          timestamp: new Date((d.timestamp || 0) * 1000),
+          level: "info" as const,
+          message: `${d.phase} • ${d.action}${d.reason ? ` (${d.reason})` : ""}`,
+        }))
+
+        setLogs((prev) => {
+          const existing = new Set(prev.map((p) => p.id))
+          const newEntries = mapped.filter((m: any) => !existing.has(m.id))
+          const merged = [...newEntries, ...prev]
+          return merged.slice(0, 50)
+        })
+      } catch (e) {
+        // ignore polling errors
+      }
+    }
+
+    fetchDecisionLogs()
+    const t = setInterval(fetchDecisionLogs, 5000)
+    return () => {
+      cancelled = true
+      clearInterval(t)
+    }
+  }, [selectedIntersectionId])
 
   const handleStartProcessing = async () => {
     if (!selectedIntersectionId) return
@@ -310,47 +348,16 @@ export default function SystemMonitorPage() {
             </Card>
           </div>
 
-          {/* Component Health Breakdown */}
-          {healthComponents && healthComponents.length > 0 && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-sm">Component Health</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-                  {healthComponents.map((comp) => {
-                    const statusStr = String(comp.status).toUpperCase()
-                    const isHealthy = statusStr === "HEALTHY"
-                    const isDegraded = statusStr === "DEGRADED"
-                    return (
-                      <div key={comp.component} className="flex items-start gap-3 p-3 bg-muted rounded-lg">
-                        <div className={`mt-0.5 w-2.5 h-2.5 rounded-full shrink-0 ${isHealthy ? "bg-green-500" : isDegraded ? "bg-amber-500" : "bg-red-500"}`} />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium">{comp.component}</p>
-                          <p className="text-xs text-muted-foreground truncate">{comp.message}</p>
-                          {comp.alert_count > 0 && (
-                            <Badge variant="destructive" className="mt-1 text-xs">{comp.alert_count} alert{comp.alert_count > 1 ? "s" : ""}</Badge>
-                          )}
-                        </div>
-                        <Badge variant={isHealthy ? "default" : isDegraded ? "secondary" : "destructive"} className="text-xs shrink-0">{comp.status}</Badge>
-                      </div>
-                    )
-                  })}
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Processing Control + Camera Health */}
+          {/* Processing Control + Component Health (Processing on the left) */}
           <div className="grid gap-6 lg:grid-cols-2 items-start">
             {/* Processing Control */}
             {selectedIntersectionId ? (
-              <Card>
+              <Card className="h-full">
                 <CardHeader>
                   <CardTitle>Processing Control</CardTitle>
                   <CardDescription>Start/stop video processing</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-4 h-full flex flex-col">
                   <div className="rounded-lg bg-muted p-4">
                     <p className="text-sm text-muted-foreground mb-2">Status</p>
                     <div className="flex items-center gap-2">
@@ -390,8 +397,7 @@ export default function SystemMonitorPage() {
                     </Button>
                   </div>
 
-                  {/* Emergency Stop */}
-                  <div className="border-t border-border pt-4">
+                  <div className="border-t border-border pt-4 mt-auto">
                     <Button
                       variant="destructive"
                       className="w-full font-bold"
@@ -401,9 +407,7 @@ export default function SystemMonitorPage() {
                       <ShieldAlert className="mr-2 h-4 w-4" />
                       EMERGENCY STOP — ALL RED
                     </Button>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Forces all lanes to RED immediately.
-                    </p>
+                    <p className="text-xs text-muted-foreground mt-2">Forces all lanes to RED immediately.</p>
                   </div>
                 </CardContent>
               </Card>
@@ -417,6 +421,45 @@ export default function SystemMonitorPage() {
                 </CardContent>
               </Card>
             )}
+
+            {/* Component Health Breakdown */}
+            {healthComponents && healthComponents.length > 0 && (
+              <Card className="h-full">
+                <CardHeader>
+                  <CardTitle className="text-sm">Component Health</CardTitle>
+                </CardHeader>
+                <CardContent className="h-full flex">
+                  <div className="flex-1 flex">
+                    <div className="w-full grid gap-3">
+                      {healthComponents.map((comp) => {
+                        const statusStr = String(comp.status).toUpperCase()
+                        const isHealthy = statusStr === "HEALTHY"
+                        const isDegraded = statusStr === "DEGRADED"
+                        return (
+                          <div key={comp.component} className="flex items-start gap-3 p-3 bg-muted rounded-lg">
+                            <div className={`mt-0.5 w-2.5 h-2.5 rounded-full shrink-0 ${isHealthy ? "bg-green-500" : isDegraded ? "bg-amber-500" : "bg-red-500"}`} />
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium">{comp.component}</p>
+                              <p className="text-xs text-muted-foreground truncate">{comp.message}</p>
+                              {comp.alert_count > 0 && (
+                                <Badge variant="destructive" className="mt-1 text-xs">{comp.alert_count} alert{comp.alert_count > 1 ? "s" : ""}</Badge>
+                              )}
+                            </div>
+                            <Badge variant={isHealthy ? "default" : isDegraded ? "secondary" : "destructive"} className="text-xs shrink-0">{comp.status}</Badge>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+
+          {/* Camera Source Manager + Camera Health (swapped positions) */}
+          <div className="grid gap-6 lg:grid-cols-2 items-start">
+            {/* Camera Source Manager */}
+            <CameraSourceManager intersectionId={selectedIntersectionId} />
 
             {/* Camera Health */}
             <Card className="h-full">
@@ -456,48 +499,7 @@ export default function SystemMonitorPage() {
               </CardContent>
             </Card>
           </div>
-
-          {/* System Logs — full width */}
-          <Card>
-            <CardHeader>
-              <CardTitle>System Logs</CardTitle>
-              <CardDescription>Recent system events and notifications</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="max-h-64 space-y-2 overflow-y-auto">
-                {logs.length > 0 ? (
-                  logs.map((log) => (
-                    <div
-                      key={log.id}
-                      className="flex items-start gap-3 rounded-lg border border-border bg-secondary/30 p-3"
-                    >
-                      <Badge
-                        variant="outline"
-                        className={`mt-0.5 ${
-                          log.level === "error"
-                            ? "border-status-error text-status-error"
-                            : log.level === "warning"
-                              ? "border-status-warning text-status-warning"
-                              : "border-status-active text-status-active"
-                        }`}
-                      >
-                        {log.level.toUpperCase()}
-                      </Badge>
-                      <div className="flex-1">
-                        <p className="text-sm">{log.message}</p>
-                        <p className="text-xs text-muted-foreground">{log.timestamp.toLocaleTimeString()}</p>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-center text-muted-foreground py-8">
-                    No logs yet. System events will appear here.
-                  </p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+          </div>
       </main>
     </div>
   )

@@ -118,6 +118,7 @@ export default function DashboardPage() {
                 <div className="h-full min-w-0">
                   <CameraSourceManager intersectionId={selectedIntersection} />
                 </div>
+                
                 <div className="h-full min-w-0">
                   <VehicleSummary intersectionId={selectedIntersection} liveLineCounts={liveLineCounts} />
                 </div>

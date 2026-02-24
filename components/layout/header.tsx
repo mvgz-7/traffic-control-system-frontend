@@ -1,6 +1,6 @@
 "use client"
 
-import { Bell, RefreshCw } from "lucide-react"
+import { RefreshCw } from "lucide-react"
 import { useMemo, memo } from "react"
 import Link from "next/link"
 import useSWR from "swr"
@@ -72,16 +72,7 @@ export const Header = memo(function Header({ title, subtitle, onRefresh, isRefre
             Refresh
           </Button>
         )}
-        <Button asChild variant="ghost" size="icon" className="relative">
-          <Link href="/notifications" aria-label="Open notifications">
-            <Bell className="h-5 w-5" />
-            {notificationCount > 0 ? (
-              <Badge className="absolute -right-1 -top-1 h-5 min-w-5 rounded-full px-1 text-xs tabular-nums">
-                {badgeText}
-              </Badge>
-            ) : null}
-          </Link>
-        </Button>
+        {/* Notifications moved to sidebar; badge shown on the sidebar icon */}
       </div>
     </header>
   )

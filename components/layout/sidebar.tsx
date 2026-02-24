@@ -2,10 +2,13 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { useState, memo } from "react"
+import { useState, memo, useMemo } from "react"
 import { cn } from "@/lib/utils"
+import useSWR from "swr"
 import { LayoutDashboard, BarChart3, TrafficCone, Monitor, Bell, Settings, Menu, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { getHealthAlerts, listIntersections, getDecisionLog } from "@/lib/api"
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -20,9 +23,24 @@ export const Sidebar = memo(function Sidebar() {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
 
+  // notification counts (health alerts + recent decisions for first intersection)
+  const { data: alerts } = useSWR("health-alerts", getHealthAlerts, { refreshInterval: 5000 })
+  const { data: intersections } = useSWR("intersections", listIntersections, { refreshInterval: 15000 })
+  const activeIntersectionId = intersections?.[0]?.id
+  const { data: decisionLog } = useSWR(activeIntersectionId ? ["decision-log", activeIntersectionId] : null, activeIntersectionId ? () => getDecisionLog(activeIntersectionId, 25) : null, { refreshInterval: 5000 })
+
+  const notificationCount = useMemo(() => {
+    const alertCount = alerts?.length ?? 0
+    const nowSeconds = Date.now() / 1000
+    const recentDecisionCount = (decisionLog ?? []).filter((d) => typeof d.timestamp === "number" && d.timestamp >= nowSeconds - 300).length
+    return alertCount + recentDecisionCount
+  }, [alerts, decisionLog])
+
+  const badgeText = notificationCount > 99 ? "99+" : String(notificationCount)
+
   const NavLinks = ({ onNavigate }: { onNavigate?: () => void }) => (
     <nav className="flex-1 p-4">
-      <div className="space-y-1">
+        <div className="space-y-1">
         {navigation.map((item) => {
           const isActive = pathname === item.href
           return (
@@ -37,7 +55,18 @@ export const Sidebar = memo(function Sidebar() {
                   : "border-transparent text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-foreground",
               )}
             >
-              <item.icon className="h-6 w-6" />
+              {item.name === "Notifications" ? (
+                <div className="relative">
+                  <item.icon className="h-6 w-6" />
+                  {notificationCount > 0 && (
+                    <Badge className="absolute -right-2 -top-2 h-5 min-w-5 rounded-full px-1 text-xs tabular-nums">
+                      {badgeText}
+                    </Badge>
+                  )}
+                </div>
+              ) : (
+                <item.icon className="h-6 w-6" />
+              )}
               <span>{item.name}</span>
             </Link>
           )

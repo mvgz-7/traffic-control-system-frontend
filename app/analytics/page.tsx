@@ -4,6 +4,7 @@ import { useMemo, useState, useEffect } from "react"
 import useSWR from "swr"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
+import { IntersectionSelector } from "@/components/dashboard/intersection-selector"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { listIntersections, getLineCounts, getVehicleCountReport } from "@/lib/api"
@@ -22,14 +23,13 @@ const VEHICLE_CLASSES = [
   "Van",
 ]
 
-const LANE_ORDER = ["north", "south", "east"]
-
-/** Map counting-line IDs to lane names */
-const LINE_TO_LANE: Record<string, string> = {
-  "north-exit": "north",
-  "south-exit": "south",
-  "east-exit": "east",
-}
+const TIME_RANGE_OPTIONS = [
+  { label: "Last 5 min", minutes: 5 },
+  { label: "Last 30 min", minutes: 30 },
+  { label: "Last 1 hour", minutes: 60 },
+  { label: "Last 6 hours", minutes: 360 },
+  { label: "Last 24 hours", minutes: 1440 },
+] as const
 
 type HourlyTotal = {
   hour: string
@@ -85,13 +85,13 @@ type IntersectionCounts = {
 function downloadPdf(
   filename: string,
   hourlyData: Record<string, HourlyTotal[]>,
-  countsData: Record<string, IntersectionCounts>
+  counts: IntersectionCounts,
+  timeRangeMinutes: number
 ) {
   const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" })
   const pageW = doc.internal.pageSize.getWidth()
   const pageH = doc.internal.pageSize.getHeight()
   const margin = 10
-  const colW = (pageW - margin * 3) / 2 // two columns with gap
   const dateStr = new Date().toLocaleDateString(undefined, {
     weekday: "long",
     year: "numeric",
@@ -99,107 +99,83 @@ function downloadPdf(
     day: "numeric",
   })
 
-  // Ordered intersection IDs: graceland left, capitol right
-  const ids = Object.keys(countsData)
-  const leftId = ids.find((id) => id.toLowerCase().includes("graceland")) || ids[0]
-  const rightId = ids.find((id) => id !== leftId) || ids[1]
-  const columns = [leftId, rightId].filter(Boolean)
+  const name = counts.name || counts.id
+  const displayName = name.charAt(0).toUpperCase() + name.slice(1)
+  const rows = hourlyData[counts.id] || []
+  const grandTotal = rows.reduce((s, r) => s + r.total, 0)
+  const tableW = pageW - margin * 2
 
-  // ─── Page 1: Title + Hourly Tables ───
+  // ─── Page 1: Title + Hourly Table (single intersection) ───
   doc.setFontSize(16)
   doc.setFont("helvetica", "bold")
-  doc.text("Traffic Analytics Report", pageW / 2, margin + 4, { align: "center" })
+  doc.text(`Traffic Analytics Report — ${displayName} Intersection`, pageW / 2, margin + 4, { align: "center" })
   doc.setFontSize(10)
   doc.setFont("helvetica", "normal")
   doc.text(dateStr, pageW / 2, margin + 10, { align: "center" })
 
-  let startY = margin + 16
+  let startY = margin + 18
 
-  columns.forEach((id, colIdx) => {
-    const xOffset = margin + colIdx * (colW + margin)
-    const rows = hourlyData[id] || []
-    const name = countsData[id]?.name || id
-    const grandTotal = rows.reduce((s, r) => s + r.total, 0)
+  doc.setFontSize(11)
+  doc.setFont("helvetica", "bold")
+  doc.text("Hourly Vehicle Counts", margin, startY)
+  doc.setFontSize(8)
+  doc.setFont("helvetica", "normal")
+  doc.text(`Total Vehicles: ${grandTotal}`, pageW - margin, startY, { align: "right" })
 
-    doc.setFontSize(11)
-    doc.setFont("helvetica", "bold")
-    doc.text(`${name.charAt(0).toUpperCase() + name.slice(1)} Intersection`, xOffset, startY)
-    doc.setFontSize(8)
-    doc.setFont("helvetica", "normal")
-    doc.text(`Total Vehicles: ${grandTotal}`, xOffset + colW, startY, { align: "right" })
+  const hourlyBody = rows.map((r) => [r.hour, String(r.total)])
+  hourlyBody.push([
+    { content: "Total", styles: { fontStyle: "bold" } } as unknown as string,
+    { content: String(grandTotal), styles: { fontStyle: "bold" } } as unknown as string,
+  ])
 
-    const body = rows.map((r) => [r.hour, String(r.total)])
-    body.push([{ content: "Total", styles: { fontStyle: "bold" } } as unknown as string, { content: String(grandTotal), styles: { fontStyle: "bold" } } as unknown as string])
-
-    autoTable(doc, {
-      startY: startY + 2,
-      margin: { left: xOffset, right: pageW - xOffset - colW },
-      head: [["Hour", "Vehicles"]],
-      body,
-      theme: "grid",
-      styles: { fontSize: 7, cellPadding: 1.2 },
-      headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: "bold", fontSize: 7.5 },
-      columnStyles: { 0: { cellWidth: colW * 0.7 }, 1: { cellWidth: colW * 0.3, halign: "right" } },
-      tableWidth: colW,
-    })
+  autoTable(doc, {
+    startY: startY + 2,
+    margin: { left: margin, right: margin },
+    head: [["Hour", "Vehicles"]],
+    body: hourlyBody,
+    theme: "grid",
+    styles: { fontSize: 8, cellPadding: 1.5 },
+    headStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: "bold", fontSize: 8.5 },
+    columnStyles: { 0: { cellWidth: tableW * 0.7 }, 1: { cellWidth: tableW * 0.3, halign: "right" } },
+    tableWidth: tableW,
   })
 
-  // ─── Page 2: Per-Lane Classification Tables (both intersections, stacked) ───
+  // ─── Page 2: Vehicle Classification Table ───
   doc.addPage()
   doc.setFontSize(16)
   doc.setFont("helvetica", "bold")
-  doc.text("Vehicle Count Per Lane", pageW / 2, margin + 4, { align: "center" })
+  doc.text(`Vehicle Classification — ${displayName} Intersection`, pageW / 2, margin + 4, { align: "center" })
   doc.setFontSize(10)
   doc.setFont("helvetica", "normal")
-  doc.text(dateStr, pageW / 2, margin + 10, { align: "center" })
+  const rangeEnd = new Date()
+  const rangeStart = new Date(rangeEnd.getTime() - timeRangeMinutes * 60 * 1000)
+  const fmt = (d: Date) => d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit", hour12: true })
+  const actualRange = `${fmt(rangeStart)} – ${fmt(rangeEnd)}`
+  const headerLine = timeRangeMinutes === 1440 ? dateStr : `${dateStr}  |  ${actualRange}`
+  doc.text(headerLine, pageW / 2, margin + 10, { align: "center" })
 
-  let classY = margin + 16
+  const classY = margin + 18
+  const fullW = pageW - margin * 2
 
-  columns.forEach((id) => {
-    const counts = countsData[id]
-    if (!counts) return
-    const name = counts.name || id
+  const classBody = VEHICLE_CLASSES.map((cls) => [
+    cls,
+    String(counts.classes[cls] || 0),
+  ])
+  classBody.push([
+    { content: "Total", styles: { fontStyle: "bold" } } as unknown as string,
+    { content: String(counts.total), styles: { fontStyle: "bold" } } as unknown as string,
+  ])
 
-    doc.setFontSize(11)
-    doc.setFont("helvetica", "bold")
-    doc.text(`${name.charAt(0).toUpperCase() + name.slice(1)} Intersection`, margin, classY)
-
-    const sortedLanes = Object.entries(counts.lanes).sort(([a], [b]) => {
-      const ai = LANE_ORDER.indexOf(a.toLowerCase())
-      const bi = LANE_ORDER.indexOf(b.toLowerCase())
-      return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
-    })
-
-    const fullW = pageW - margin * 2
-    const head = [["Lane", ...VEHICLE_CLASSES, "Total"]]
-    const body = sortedLanes.map(([lane, data]) => [
-      lane.charAt(0).toUpperCase() + lane.slice(1),
-      ...VEHICLE_CLASSES.map((cls) => String(data.classes[cls] || 0)),
-      String(data.total),
-    ])
-    body.push([
-      { content: "Total", styles: { fontStyle: "bold" } } as unknown as string,
-      ...VEHICLE_CLASSES.map((cls) => ({ content: String(counts.classes[cls] || 0), styles: { fontStyle: "bold" } }) as unknown as string),
-      { content: String(counts.total), styles: { fontStyle: "bold" } } as unknown as string,
-    ])
-
-    autoTable(doc, {
-      startY: classY + 2,
-      margin: { left: margin, right: margin },
-      head,
-      body,
-      theme: "grid",
-      styles: { fontSize: 7, cellPadding: 1.5, overflow: "linebreak" },
-      headStyles: { fillColor: [34, 197, 94], textColor: 255, fontStyle: "bold", fontSize: 7.5 },
-      columnStyles: {
-        0: { cellWidth: fullW * 0.1 },
-        [VEHICLE_CLASSES.length + 1]: { fontStyle: "bold" },
-      },
-      tableWidth: fullW,
-    })
-
-    // Get the Y position after the table for the next one
-    classY = (doc as unknown as Record<string, number>).lastAutoTable?.finalY + 10 || classY + 40
+  autoTable(doc, {
+    startY: classY,
+    margin: { left: margin, right: margin },
+    head: [["Vehicle Type", "Count"]],
+    body: classBody,
+    theme: "grid",
+    styles: { fontSize: 9, cellPadding: 2 },
+    headStyles: { fillColor: [34, 197, 94], textColor: 255, fontStyle: "bold", fontSize: 10 },
+    columnStyles: { 0: { cellWidth: fullW * 0.6 }, 1: { cellWidth: fullW * 0.4, halign: "right" } },
+    tableWidth: fullW,
   })
 
   // Footer on all pages
@@ -224,14 +200,10 @@ function parseLaneCounts(counts: LaneCounts | undefined) {
   let grandTotal = 0
   const grandClasses: Record<string, number> = {}
 
-  // Initialize all lanes
-  for (const lane of LANE_ORDER) {
-    byLane[lane] = { total: 0, classes: {} }
-  }
-
   if (counts) {
     for (const [lineId, classCounts] of Object.entries(counts)) {
-      const laneName = LINE_TO_LANE[lineId] || lineId
+      // Use the line ID directly as the lane name (no hardcoded mapping)
+      const laneName = lineId
       if (!byLane[laneName]) {
         byLane[laneName] = { total: 0, classes: {} }
       }
@@ -251,7 +223,8 @@ function parseLaneCounts(counts: LaneCounts | undefined) {
 export default function AnalyticsPage() {
   const [countsData, setCountsData] = useState<Record<string, IntersectionCounts>>({})
   const [hourlyByIntersection, setHourlyByIntersection] = useState<Record<string, HourlyTotal[]>>({})
-  const [classificationId, setClassificationId] = useState("")
+  const [selectedId, setSelectedId] = useState("")
+  const [timeRangeMinutes, setTimeRangeMinutes] = useState(1440) // default: last 24 hours
 
   const { data: intersections } = useSWR<IntersectionSummary[]>(
     "intersections",
@@ -259,91 +232,92 @@ export default function AnalyticsPage() {
     { refreshInterval: 5000 }
   )
 
-  // Fetch line counts for ALL intersections (refreshed every 15s)
+  // Fetch line counts for the SELECTED intersection (refreshed every 15s)
   useEffect(() => {
-    if (!intersections?.length) return
+    if (!intersections?.length || !selectedId) return
     let cancelled = false
+    const ix = intersections.find((i) => i.id === selectedId)
+    if (!ix) return
 
-    async function fetchAll() {
-      const results: Record<string, IntersectionCounts> = {}
+    async function fetchCounts() {
+      const now = Math.floor(Date.now() / 1000)
+      const start = now - timeRangeMinutes * 60
 
-      for (const ix of intersections!) {
-        try {
-          const data = await getLineCounts(ix.id)
-          const { byLane, grandTotal, grandClasses } = parseLaneCounts(data?.counts)
-          results[ix.id] = {
-            id: ix.id,
-            name: ix.name,
-            total: grandTotal,
-            classes: grandClasses,
-            lanes: byLane,
-          }
-        } catch {
-          results[ix.id] = {
-            id: ix.id,
-            name: ix.name,
-            total: 0,
-            classes: {},
-            lanes: Object.fromEntries(LANE_ORDER.map((l) => [l, { total: 0, classes: {} }])),
-          }
+      try {
+        const data = await getLineCounts(ix!.id, start, now)
+        const { byLane, grandTotal, grandClasses } = parseLaneCounts(data?.counts)
+        if (!cancelled) {
+          setCountsData((prev) => ({
+            ...prev,
+            [ix!.id]: {
+              id: ix!.id,
+              name: ix!.name,
+              total: grandTotal,
+              classes: grandClasses,
+              lanes: byLane,
+            },
+          }))
+        }
+      } catch {
+        if (!cancelled) {
+          setCountsData((prev) => ({
+            ...prev,
+            [ix!.id]: { id: ix!.id, name: ix!.name, total: 0, classes: {}, lanes: {} },
+          }))
         }
       }
-
-      if (!cancelled) setCountsData(results)
     }
 
-    fetchAll()
-    const interval = setInterval(fetchAll, 15000)
+    fetchCounts()
+    const interval = setInterval(fetchCounts, 15000)
 
     return () => {
       cancelled = true
       clearInterval(interval)
     }
-  }, [intersections])
+  }, [intersections, selectedId, timeRangeMinutes])
 
-  // Fetch hourly totals using server-side aggregation (single API call per intersection)
+  // Fetch hourly totals for the SELECTED intersection
+  const numHours = Math.max(1, Math.ceil(timeRangeMinutes / 60))
   useEffect(() => {
-    if (!intersections?.length) return
+    if (!intersections?.length || !selectedId) return
     let cancelled = false
+    const ix = intersections.find((i) => i.id === selectedId)
+    if (!ix) return
 
     async function fetchHourly() {
       const now = new Date()
       const currentHourStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0)
-      const start24h = currentHourStart.getTime() / 1000 - 23 * 3600
+      const startTs = currentHourStart.getTime() / 1000 - (numHours - 1) * 3600
       const endTs = currentHourStart.getTime() / 1000 + 3600
-      const windows = getHourlyWindows(24)
+      const windows = getHourlyWindows(numHours)
 
-      const results: Record<string, HourlyTotal[]> = {}
+      try {
+        const report = await getVehicleCountReport(ix!.id, startTs, endTs, "hour")
+        const periodTotals: Record<string, number> = {}
+        for (const record of report.data || []) {
+          periodTotals[record.period] = (periodTotals[record.period] || 0) + record.count
+        }
 
-      for (const ix of intersections!) {
-        try {
-          // Single API call replaces 24 separate calls
-          const report = await getVehicleCountReport(ix.id, start24h, endTs, "hour")
-          // Group report records by period and sum counts
-          const periodTotals: Record<string, number> = {}
-          for (const record of report.data || []) {
-            periodTotals[record.period] = (periodTotals[record.period] || 0) + record.count
-          }
+        const rows: HourlyTotal[] = windows.map((w) => {
+          const hourDate = new Date(w.start * 1000)
+          // Match backend strftime format: YYYY-MM-DDTHH:00:00
+          const periodKey = `${hourDate.getFullYear()}-${String(hourDate.getMonth() + 1).padStart(2, "0")}-${String(hourDate.getDate()).padStart(2, "0")}T${String(hourDate.getHours()).padStart(2, "0")}:00:00`
+          return { hour: w.label, hourStart: w.start, total: periodTotals[periodKey] || 0 }
+        })
 
-          // Map windows to totals (match by hour start)
-          const rows: HourlyTotal[] = windows.map((w) => {
-            // Try to match period string to window
-            const hourDate = new Date(w.start * 1000)
-            // Backend period format: "YYYY-MM-DD HH:00"
-            const periodKey = `${hourDate.getFullYear()}-${String(hourDate.getMonth() + 1).padStart(2, "0")}-${String(hourDate.getDate()).padStart(2, "0")} ${String(hourDate.getHours()).padStart(2, "0")}:00`
-            return {
-              hour: w.label,
-              hourStart: w.start,
-              total: periodTotals[periodKey] || 0,
-            }
-          })
-          results[ix.id] = rows
-        } catch {
-          results[ix.id] = windows.map((w) => ({ hour: w.label, hourStart: w.start, total: 0 }))
+        if (!cancelled) {
+          setHourlyByIntersection((prev) => ({ ...prev, [ix!.id]: rows }))
+        }
+      } catch {
+        const windows2 = getHourlyWindows(numHours)
+        if (!cancelled) {
+          setHourlyByIntersection((prev) => ({
+            ...prev,
+            [ix!.id]: windows2.map((w) => ({ hour: w.label, hourStart: w.start, total: 0 })),
+          }))
         }
       }
-
-      if (!cancelled) setHourlyByIntersection(results)
     }
 
     fetchHourly()
@@ -353,7 +327,7 @@ export default function AnalyticsPage() {
       cancelled = true
       clearInterval(interval)
     }
-  }, [intersections])
+  }, [intersections, selectedId, numHours])
 
   const report = useMemo(
     () => ({
@@ -365,12 +339,12 @@ export default function AnalyticsPage() {
 
   const intersectionList = intersections || []
 
-  // Auto-select first intersection for classification view
+  // Auto-select first intersection
   useEffect(() => {
-    if (intersectionList.length > 0 && !classificationId) {
-      setClassificationId(intersectionList[0].id)
+    if (intersectionList.length > 0 && !selectedId) {
+      setSelectedId(intersectionList[0].id)
     }
-  }, [intersectionList, classificationId])
+  }, [intersectionList, selectedId])
 
   return (
     <div className="min-h-screen bg-background">
@@ -386,9 +360,12 @@ export default function AnalyticsPage() {
               className="border-primary text-primary hover:bg-primary/10"
               onClick={() => {
                 const ts = new Date().toISOString().replace(/[:.]/g, "-")
-                downloadPdf(`traffic_analytics_${ts}.pdf`, hourlyByIntersection, countsData)
+                const selected = countsData[selectedId]
+                if (selected) {
+                  downloadPdf(`traffic_analytics_${selectedId}_${ts}.pdf`, hourlyByIntersection, selected, timeRangeMinutes)
+                }
               }}
-              disabled={intersectionList.length === 0}
+              disabled={!selectedId || !countsData[selectedId]}
             >
               Save Report
             </Button>
@@ -401,135 +378,126 @@ export default function AnalyticsPage() {
             </p>
           )}
 
-          {/* Hourly Total Vehicle Counts — side by side */}
+          {/* Intersection Selector */}
           {intersectionList.length > 0 && (
-            <div className="grid gap-6 lg:grid-cols-2">
-              {intersectionList.map((ix) => {
-                const rows = hourlyByIntersection[ix.id] || []
-                const grandTotal = rows.reduce((sum, r) => sum + r.total, 0)
-
-                return (
-                  <Card key={ix.id}>
-                    <CardHeader className="pb-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <CardTitle className="capitalize">{ix.name}</CardTitle>
-                          <p className="text-sm text-muted-foreground mt-1">{new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</p>
-                        </div>
-                        <span className="text-sm font-semibold tabular-nums">
-                          Total: {grandTotal}
-                        </span>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b text-left">
-                              <th className="p-2 font-medium text-muted-foreground">Hour</th>
-                              <th className="p-2 font-medium text-muted-foreground text-right">Vehicles</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {rows.map((row) => (
-                              <tr key={row.hourStart} className="border-b last:border-0 hover:bg-muted/50">
-                                <td className="p-2 whitespace-nowrap text-xs">{row.hour}</td>
-                                <td className="p-2 text-right font-semibold tabular-nums">{row.total}</td>
-                              </tr>
-                            ))}
-                            {rows.length === 0 && (
-                              <tr>
-                                <td colSpan={2} className="p-4 text-center text-muted-foreground text-xs">Loading...</td>
-                              </tr>
-                            )}
-                            <tr className="border-t-2 font-semibold bg-muted/30">
-                              <td className="p-2">Total</td>
-                              <td className="p-2 text-right tabular-nums">{grandTotal}</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    </CardContent>
-                  </Card>
-                )
-              })}
-            </div>
+            <IntersectionSelector
+              intersections={intersectionList}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+            />
           )}
 
-          {/* Vehicle Count Per Lane — with intersection selector */}
-          {intersectionList.length > 0 && (() => {
-            const counts = classificationId ? countsData[classificationId] : undefined
-            const lanes: Record<string, { total: number; classes: Record<string, number> }> = counts?.lanes || Object.fromEntries(LANE_ORDER.map((l) => [l, { total: 0, classes: {} }]))
-            const sortedLanes = Object.entries(lanes).sort(([a], [b]) => {
-              const ai = LANE_ORDER.indexOf(a.toLowerCase())
-              const bi = LANE_ORDER.indexOf(b.toLowerCase())
-              return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi)
-            })
+          {/* Time Range Selector */}
+          {intersectionList.length > 0 && (
+            <Card>
+              <CardContent className="py-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-sm font-semibold text-foreground whitespace-nowrap">Time Range:</span>
+                  {TIME_RANGE_OPTIONS.map((opt) => (
+                    <Button
+                      key={opt.minutes}
+                      size="sm"
+                      variant={timeRangeMinutes === opt.minutes ? "default" : "outline"}
+                      onClick={() => setTimeRangeMinutes(opt.minutes)}
+                    >
+                      {opt.label}
+                    </Button>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Hourly and Vehicle Classification — side-by-side */}
+          {intersectionList.length > 0 && selectedId && (() => {
+            const rows = hourlyByIntersection[selectedId] || []
+            const grandTotal = rows.reduce((sum, r) => sum + r.total, 0)
+            const selectedIx = intersectionList.find((ix) => ix.id === selectedId)
+            const counts = countsData[selectedId]
 
             return (
-              <Card>
-                <CardHeader className="pb-3">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <CardTitle>Vehicle Count Per Lane</CardTitle>
-                      <p className="text-sm text-muted-foreground mt-1">{new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+                <Card>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <CardTitle className="capitalize">{selectedIx?.name ?? selectedId}</CardTitle>
+                        <p className="text-sm text-muted-foreground mt-1">{new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</p>
+                      </div>
+                      <span className="text-sm font-semibold tabular-nums">
+                        Total: {grandTotal}
+                      </span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">Select Intersection:</span>
-                      <select
-                        value={classificationId}
-                        onChange={(e) => setClassificationId(e.target.value)}
-                        className="rounded-md border border-green-300 bg-green-50 px-3 py-1.5 text-sm capitalize text-green-800 font-medium shadow-sm focus:outline-none focus:ring-2 focus:ring-green-400 dark:bg-green-950 dark:border-green-700 dark:text-green-200"
-                      >
-                      {intersectionList.map((ix) => (
-                        <option key={ix.id} value={ix.id}>
-                          {ix.name}
-                        </option>
-                      ))}
-                    </select>
-                    </div>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b text-left">
-                          <th className="p-2 font-medium text-muted-foreground">Lane</th>
-                          <th className="p-2 font-medium text-muted-foreground text-right">Total</th>
-                          {VEHICLE_CLASSES.map((cls) => (
-                            <th key={cls} className="p-2 font-medium text-muted-foreground text-right whitespace-nowrap text-xs">
-                              {cls}
-                            </th>
-                          ))}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sortedLanes.map(([laneName, laneData]) => (
-                          <tr key={laneName} className="border-b last:border-0 hover:bg-muted/50">
-                            <td className="p-2 capitalize font-medium">{laneName}</td>
-                            <td className="p-2 text-right font-semibold tabular-nums">{laneData.total}</td>
-                            {VEHICLE_CLASSES.map((cls) => (
-                              <td key={cls} className="p-2 text-right tabular-nums text-muted-foreground">
-                                {laneData.classes[cls] || 0}
-                              </td>
-                            ))}
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b text-left">
+                            <th className="p-2 font-medium text-muted-foreground">Hour</th>
+                            <th className="p-2 font-medium text-muted-foreground text-right">Vehicles</th>
                           </tr>
-                        ))}
-                        <tr className="border-t-2 font-semibold bg-muted/30">
-                          <td className="p-2">Total</td>
-                          <td className="p-2 text-right tabular-nums">{counts?.total ?? 0}</td>
-                          {VEHICLE_CLASSES.map((cls) => (
-                            <td key={cls} className="p-2 text-right tabular-nums">
-                              {counts?.classes[cls] || 0}
-                            </td>
+                        </thead>
+                        <tbody>
+                          {rows.map((row) => (
+                            <tr key={row.hourStart} className="border-b last:border-0 hover:bg-muted/50">
+                              <td className="p-2 whitespace-nowrap text-xs">{row.hour}</td>
+                              <td className="p-2 text-right font-semibold tabular-nums">{row.total}</td>
+                            </tr>
                           ))}
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                </CardContent>
-              </Card>
+                          {rows.length === 0 && (
+                            <tr>
+                              <td colSpan={2} className="p-4 text-center text-muted-foreground text-xs">Loading...</td>
+                            </tr>
+                          )}
+                          <tr className="border-t-2 font-semibold bg-muted/30">
+                            <td className="p-2">Total</td>
+                            <td className="p-2 text-right tabular-nums">{grandTotal}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader className="pb-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <CardTitle>Vehicle Classification</CardTitle>
+                        <p className="text-sm text-muted-foreground mt-1">{new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</p>
+                      </div>
+                      <span className="text-sm font-semibold tabular-nums">
+                        Total: {counts?.total ?? 0}
+                      </span>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b text-left">
+                            <th className="p-2 font-medium text-muted-foreground">Vehicle Type</th>
+                            <th className="p-2 font-medium text-muted-foreground text-right">Count</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {VEHICLE_CLASSES.map((cls) => (
+                            <tr key={cls} className="border-b last:border-0 hover:bg-muted/50">
+                              <td className="p-2 font-medium">{cls}</td>
+                              <td className="p-2 text-right font-semibold tabular-nums">{counts?.classes[cls] || 0}</td>
+                            </tr>
+                          ))}
+                          <tr className="border-t-2 font-semibold bg-muted/30">
+                            <td className="p-2">Total</td>
+                            <td className="p-2 text-right tabular-nums">{counts?.total ?? 0}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             )
           })()}
         </div>

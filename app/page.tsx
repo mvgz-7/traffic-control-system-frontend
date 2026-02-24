@@ -114,10 +114,7 @@ export default function DashboardPage() {
               </div>
 
               {/* Under VAC: 2 columns */}
-              <div className="grid gap-6 lg:grid-cols-2 items-stretch">
-                <div className="h-full min-w-0">
-                  <CameraSourceManager intersectionId={selectedIntersection} />
-                </div>
+              <div className="grid gap-6 items-stretch">
                 <div className="h-full min-w-0">
                   <VehicleSummary intersectionId={selectedIntersection} liveLineCounts={liveLineCounts} />
                 </div>

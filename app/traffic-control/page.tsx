@@ -24,6 +24,7 @@ import type { IntersectionSummary, IntersectionStatus, LaneConfig, LaneConfigUpd
 import { VideoFeedWebSocket } from "@/components/dashboard/video-feed"
 import { VehicleSummary } from "@/components/dashboard/vehicle-summary"
 import { IntersectionSelector } from "@/components/dashboard/intersection-selector"
+import ConfirmDialog from "@/components/ui/confirm-dialog"
 
 function NumberField({
   label,
@@ -48,7 +49,6 @@ function NumberField({
     Number.isFinite(value) ? String(value) : ""
   )
 
-  // Sync from parent when value changes externally (e.g. lane switch)
   useEffect(() => {
     setLocalValue(Number.isFinite(value) ? String(value) : "")
   }, [value])
@@ -215,16 +215,26 @@ export default function TrafficControlPage() {
 
   const handleReset = async () => {
     if (!selectedId) return
-    setIsUpdating(true)
-    try {
-      await resetIntersection(selectedId)
-      toast.success("Controller reset successfully")
-    } catch (error) {
-      toast.error("Failed to reset controller")
-      console.error(error)
-    } finally {
-      setIsUpdating(false)
-    }
+    // open a confirm dialog (handled below)
+    setConfirm({
+      open: true,
+      title: "Reset Controller",
+      description: "Reset controller for this intersection? This will interrupt current cycles.",
+      onConfirm: async () => {
+        setIsUpdating(true)
+        try {
+          await resetIntersection(selectedId)
+          toast.success("Controller reset successfully")
+        } catch (error) {
+          toast.error("Failed to reset controller")
+          console.error(error)
+        } finally {
+          setIsUpdating(false)
+          setConfirm((c) => ({ ...c, open: false }))
+        }
+      },
+    })
+    return
   }
 
   const handleEmergencyToggle = async () => {
@@ -232,14 +242,48 @@ export default function TrafficControlPage() {
     setIsUpdating(true)
     try {
       if (!isEmergencyActive) {
-        await emergencyStop(selectedId)
-        setIsEmergencyActive(true)
-        toast.success("EMERGENCY STOP — All lanes forced RED")
+        setConfirm({
+          open: true,
+          title: "EMERGENCY STOP",
+          description: "Execute EMERGENCY STOP? This forces ALL lanes to RED immediately.",
+          confirmLabel: "Execute Emergency Stop",
+          onConfirm: async () => {
+            setIsUpdating(true)
+            try {
+              await emergencyStop(selectedId)
+              setIsEmergencyActive(true)
+              toast.success("EMERGENCY STOP — All lanes forced RED")
+            } catch (error) {
+              toast.error("Failed to execute emergency stop")
+              console.error(error)
+            } finally {
+              setIsUpdating(false)
+              setConfirm((c) => ({ ...c, open: false }))
+            }
+          },
+        })
       } else {
-        // Restore normal operation by resetting controller to startup state
-        await resetIntersection(selectedId)
-        setIsEmergencyActive(false)
-        toast.success("Emergency cleared — Controller reset")
+        setConfirm({
+          open: true,
+          title: "CLEAR EMERGENCY",
+          description: "Clear emergency and restore controller? This will reset controller state.",
+          confirmLabel: "Clear Emergency",
+          confirmClassName: "px-4 py-2 rounded-md border-2 border-green-600 text-green-700 bg-white hover:bg-green-50 font-semibold text-sm",
+          onConfirm: async () => {
+            setIsUpdating(true)
+            try {
+              await resetIntersection(selectedId)
+              setIsEmergencyActive(false)
+              toast.success("Emergency cleared — Controller reset")
+            } catch (error) {
+              toast.error("Failed to clear emergency")
+              console.error(error)
+            } finally {
+              setIsUpdating(false)
+              setConfirm((c) => ({ ...c, open: false }))
+            }
+          },
+        })
       }
     } catch (error) {
       toast.error(isEmergencyActive ? "Failed to clear emergency" : "Failed to execute emergency stop")
@@ -251,36 +295,106 @@ export default function TrafficControlPage() {
 
   const handleForceGreen = async (laneId: string) => {
     if (!selectedId) return
-    setIsUpdating(true)
-    try {
-      await forceGreen(selectedId, laneId)
-      toast.success(`Forced GREEN on ${laneId}`)
-    } catch (error) {
-      toast.error(`Failed to force green on ${laneId}`)
-      console.error(error)
-    } finally {
-      setIsUpdating(false)
-    }
+    setConfirm({
+      open: true,
+      title: `Force ${laneId} GREEN`,
+      description: `Force GREEN on ${laneId}? This will override normal scheduling and hold conflicting lanes RED.`,
+      confirmLabel: `Force ${laneId} GREEN`,
+        confirmClassName: "px-4 py-2 rounded-md border-2 border-green-600 text-green-700 bg-white hover:bg-green-50 font-semibold text-sm",
+        onConfirm: async () => {
+        setIsUpdating(true)
+        try {
+          await forceGreen(selectedId, laneId)
+          toast.success(`Forced GREEN on ${laneId}`)
+        } catch (error) {
+          toast.error(`Failed to force green on ${laneId}`)
+          console.error(error)
+        } finally {
+          setIsUpdating(false)
+          setConfirm((c) => ({ ...c, open: false }))
+        }
+      },
+    })
   }
+
+  // Fixed Timing toggle state: tracks whether fixed timing is active and stores original max_gaps
+  const [isFixedTimingActive, setIsFixedTimingActive] = useState(false)
+  const [originalMaxGaps, setOriginalMaxGaps] = useState<Record<string, number>>({})
+
 
   const handleFixedTiming = async () => {
     if (!selectedId || laneIds.length === 0) return
-    setIsUpdating(true)
-    try {
-      await Promise.all(
-        laneIds.map((laneId) =>
-          updateLaneConfig(selectedId, laneId, { max_gap: 999 })
-        )
-      )
-      mutateLaneConfig()
-      toast.success("Fixed timing enabled — all lanes set to max_gap=999")
-    } catch (error) {
-      toast.error("Failed to enable fixed timing")
-      console.error(error)
-    } finally {
-      setIsUpdating(false)
+    // Toggle fixed timing: enable if inactive, otherwise restore saved values
+    if (!isFixedTimingActive) {
+      // Enable fixed timing: confirm then save and apply
+      setConfirm({
+        open: true,
+        title: "Enable Fixed Timing",
+        description: "Enable Fixed Timing mode for all lanes (sets max_gap=999)? This will force lanes to run to their max green durations.",
+        confirmLabel: "Enable Fixed Timing",
+        confirmClassName: "px-4 py-2 rounded-md border-2 border-amber-500 text-amber-700 bg-white hover:bg-amber-50 font-semibold text-sm",
+        onConfirm: async () => {
+          setIsUpdating(true)
+          try {
+            const configs = await Promise.all(laneIds.map((laneId) => getLaneConfig(selectedId, laneId)))
+            const orig: Record<string, number> = {}
+            laneIds.forEach((laneId, i) => {
+              const cfg = configs[i]
+              orig[laneId] = cfg?.max_gap ?? 3
+            })
+            setOriginalMaxGaps(orig)
+            await Promise.all(laneIds.map((laneId) => updateLaneConfig(selectedId, laneId, { max_gap: 999 })))
+            mutateLaneConfig()
+            setIsFixedTimingActive(true)
+            toast.success("Fixed timing enabled — all lanes set to max_gap=999")
+          } catch (error) {
+            toast.error("Failed to enable fixed timing")
+            console.error(error)
+          } finally {
+            setIsUpdating(false)
+            setConfirm((c) => ({ ...c, open: false }))
+          }
+        },
+      })
+    } else {
+      // Disable fixed timing: confirm then restore
+      setConfirm({
+        open: true,
+        title: "Disable Fixed Timing",
+        description: "Restore VAC algorithm by restoring previous max_gap values for each lane?",
+        confirmLabel: "Disable Fixed Timing",
+        confirmClassName: "px-4 py-2 rounded-md border-2 border-green-600 text-green-700 bg-white hover:bg-green-50 font-semibold text-sm",
+        onConfirm: async () => {
+          setIsUpdating(true)
+          try {
+            await Promise.all(laneIds.map((laneId) => updateLaneConfig(selectedId, laneId, { max_gap: originalMaxGaps[laneId] ?? 3 })))
+            mutateLaneConfig()
+            setOriginalMaxGaps({})
+            setIsFixedTimingActive(false)
+            toast.success("Fixed timing disabled — restored VAC parameters")
+          } catch (error) {
+            toast.error("Failed to disable fixed timing")
+            console.error(error)
+          } finally {
+            setIsUpdating(false)
+            setConfirm((c) => ({ ...c, open: false }))
+          }
+        },
+      })
     }
   }
+
+  // Confirm dialog state
+  const [confirm, setConfirm] = useState<{
+    open: boolean
+    title?: string
+    description?: string
+    confirmLabel?: string
+    cancelLabel?: string
+    onConfirm?: () => Promise<void> | void
+    confirmClassName?: string
+    cancelClassName?: string
+  }>({ open: false })
 
   const handleInputChange = (key: string, value: number) => {
     setFormData((prev) => ({ ...prev, [key]: value }))
@@ -288,6 +402,27 @@ export default function TrafficControlPage() {
 
   return (
     <div className="min-h-screen bg-background">
+      <ConfirmDialog
+        open={!!confirm.open}
+        title={confirm.title}
+        description={confirm.description}
+        confirmLabel={confirm.confirmLabel}
+        cancelLabel={confirm.cancelLabel}
+        confirmClassName={confirm.confirmClassName}
+        cancelClassName={confirm.cancelClassName}
+        onConfirm={() => {
+          try {
+            // call maybe-async onConfirm
+            const res = confirm.onConfirm && confirm.onConfirm()
+            if (res && typeof (res as Promise<any>).then === "function") {
+              ;(res as Promise<any>).catch((e) => console.error(e))
+            }
+          } finally {
+            setConfirm((c) => ({ ...c, open: false }))
+          }
+        }}
+        onCancel={() => setConfirm((c) => ({ ...c, open: false }))}
+      />
       <Sidebar />
       <main className="min-w-0 md:pl-72">
         <Header
@@ -363,12 +498,12 @@ export default function TrafficControlPage() {
                       </p>
                       <Button
                         variant="outline"
-                        className="w-full border-amber-500 text-amber-600 hover:bg-amber-500/10"
+                        className={`w-full border-2 bg-transparent ${isFixedTimingActive ? "border-green-600 text-green-600 hover:bg-transparent" : "border-amber-500 text-amber-600 hover:bg-transparent"}`}
                         onClick={handleFixedTiming}
                         disabled={isUpdating || !selectedId}
                       >
                         <Timer className="w-4 h-4 mr-2" />
-                        Enable Fixed Timing (All Lanes)
+                        {isFixedTimingActive ? "Disable Fixed Timing (All Lanes)" : "Enable Fixed Timing (All Lanes)"}
                       </Button>
                       <p className="text-xs text-muted-foreground mt-2">
                         Sets max_gap=999 on all lanes. Each lane will always run to its max green duration.
@@ -468,7 +603,20 @@ export default function TrafficControlPage() {
                         </div>
 
                         <div className="flex gap-2 pt-2">
-                          <Button onClick={handleUpdate} disabled={isUpdating} className="flex-1">
+                          <Button
+                            onClick={() =>
+                              setConfirm({
+                                open: true,
+                                title: `Save ${selectedLane} Configuration`,
+                                description: `Save configuration for ${selectedLane}? This will apply changes to the controller.`,
+                                confirmLabel: "Save",
+                                confirmClassName: "px-4 py-2 rounded-md border-2 border-green-600 text-green-700 bg-white hover:bg-green-50 font-semibold text-sm",
+                                onConfirm: handleUpdate,
+                              })
+                            }
+                            disabled={isUpdating}
+                            className="flex-1"
+                          >
                             {isUpdating ? "Updating..." : `Save ${selectedLane}`}
                           </Button>
                           <Button

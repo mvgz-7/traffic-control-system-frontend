@@ -263,7 +263,7 @@ export default function AnalyticsPage() {
     }
 
     fetchCounts()
-    const interval = setInterval(fetchCounts, 15000)
+    const interval = setInterval(fetchCounts, timeRangeMinutes < 60 ? 5000 : 15000)
 
     return () => {
       cancelled = true
@@ -436,7 +436,13 @@ export default function AnalyticsPage() {
 
           {/* Hourly and Vehicle Classification — side-by-side */}
           {intersectionList.length > 0 && selectedId && (() => {
-            const rows = hourlyByIntersection[selectedId] || []
+            let rows = hourlyByIntersection[selectedId] || []
+            // For short intervals (<= 60 minutes) show a live single-row total
+            if (timeRangeMinutes <= 60) {
+              const total = countsData[selectedId]?.total ?? 0
+              const label = timeRangeMinutes === 5 ? "Last 5 minutes" : timeRangeMinutes === 30 ? "Last 30 minutes" : `Last ${timeRangeMinutes} minutes`
+              rows = [{ hour: label, hourStart: Math.floor(Date.now() / 1000), total }]
+            }
             const grandTotal = rows.reduce((sum, r) => sum + r.total, 0)
             const selectedIx = intersectionList.find((ix) => ix.id === selectedId)
             const counts = countsData[selectedId]

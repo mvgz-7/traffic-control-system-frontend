@@ -14,14 +14,10 @@ import { CameraSourceManager } from "@/components/dashboard/camera-source-manage
 import { IntersectionSelector } from "@/components/dashboard/intersection-selector"
 import {
   listIntersections,
-  getProcessingStatus,
   getCameraHealth,
-  startProcessing,
-  stopProcessing,
   getHealth,
   getHealthMetrics,
   getHealthComponents,
-  emergencyStop,
 } from "@/lib/api"
 import type { IntersectionSummary, ProcessingStatus, CameraHealthResponse, HealthResponse, HealthMetricPoint, HealthComponent } from "@/lib/types"
 import {
@@ -45,7 +41,7 @@ interface SystemLog {
 export default function SystemMonitorPage() {
   const [selectedIntersectionId, setSelectedIntersectionId] = useState("")
   const [logs, setLogs] = useState<SystemLog[]>([])
-  const [isProcessingUpdating, setIsProcessingUpdating] = useState(false)
+  
 
   const { data: intersections } = useSWR<IntersectionSummary[]>("intersections", listIntersections, {
     refreshInterval: 5000,
@@ -55,11 +51,7 @@ export default function SystemMonitorPage() {
     refreshInterval: 3000,
   })
 
-  const { data: processingStatus } = useSWR<ProcessingStatus>(
-    selectedIntersectionId ? [`processing`, selectedIntersectionId] : null,
-    selectedIntersectionId ? () => getProcessingStatus(selectedIntersectionId) : null,
-    { refreshInterval: 2000 }
-  )
+
 
   const { data: cameraHealth } = useSWR<CameraHealthResponse>(
     selectedIntersectionId ? [`cameras`, selectedIntersectionId] : null,
@@ -104,50 +96,7 @@ export default function SystemMonitorPage() {
     ])
   }
 
-  const handleStartProcessing = async () => {
-    if (!selectedIntersectionId) return
-    setIsProcessingUpdating(true)
-    try {
-      await startProcessing(selectedIntersectionId)
-      toast.success("Processing started")
-      addLog("info", `Processing started for ${selectedIntersectionId}`)
-    } catch (err) {
-      toast.error("Failed to start processing")
-      addLog("error", `Failed to start processing for ${selectedIntersectionId}`)
-    } finally {
-      setIsProcessingUpdating(false)
-    }
-  }
 
-  const handleStopProcessing = async () => {
-    if (!selectedIntersectionId) return
-    setIsProcessingUpdating(true)
-    try {
-      await stopProcessing(selectedIntersectionId)
-      toast.success("Processing stopped")
-      addLog("info", `Processing stopped for ${selectedIntersectionId}`)
-    } catch (err) {
-      toast.error("Failed to stop processing")
-      addLog("error", `Failed to stop processing for ${selectedIntersectionId}`)
-    } finally {
-      setIsProcessingUpdating(false)
-    }
-  }
-
-  const handleEmergencyStop = async () => {
-    if (!selectedIntersectionId) return
-    setIsProcessingUpdating(true)
-    try {
-      await emergencyStop(selectedIntersectionId)
-      toast.success("EMERGENCY STOP — All lanes forced RED")
-      addLog("warning", `Emergency stop executed for ${selectedIntersectionId}`)
-    } catch (err) {
-      toast.error("Failed to execute emergency stop")
-      addLog("error", `Emergency stop failed for ${selectedIntersectionId}`)
-    } finally {
-      setIsProcessingUpdating(false)
-    }
-  }
 
   const formatUptime = (seconds: number) => {
     const hrs = Math.floor(seconds / 3600)
@@ -384,84 +333,7 @@ export default function SystemMonitorPage() {
             </Card>
           </div>
 
-          {/* Processing Control + Emergency + System Logs */}
-          <div className="grid gap-6 lg:grid-cols-2 items-start">
-            {/* Processing Control */}
-            {selectedIntersectionId ? (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Processing Control</CardTitle>
-                  <CardDescription>Start/stop video processing</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="rounded-lg bg-muted p-4">
-                    <p className="text-sm text-muted-foreground mb-2">Status</p>
-                    <div className="flex items-center gap-2">
-                      <div
-                        className={`w-3 h-3 rounded-full ${
-                          String(processingStatus?.state || "").toUpperCase() === "RUNNING" ? "bg-green-500" : "bg-gray-500"
-                        }`}
-                      />
-                      <p className="font-semibold">{processingStatus?.state || "UNKNOWN"}</p>
-                    </div>
-                  </div>
-
-                  {processingStatus?.uptime_seconds != null ? (
-                    <div className="rounded-lg bg-muted p-4">
-                      <p className="text-sm text-muted-foreground mb-2">Uptime</p>
-                      <p className="font-semibold">{formatUptime(Math.floor(processingStatus.uptime_seconds))}</p>
-                    </div>
-                  ) : null}
-
-                  <div className="space-y-2 pt-4">
-                    <Button
-                      onClick={handleStartProcessing}
-                      disabled={isProcessingUpdating || String(processingStatus?.state || "").toUpperCase() === "RUNNING"}
-                      className="w-full"
-                    >
-                      <Play className="mr-2 h-4 w-4" />
-                      Start Processing
-                    </Button>
-                    <Button
-                      onClick={handleStopProcessing}
-                      disabled={isProcessingUpdating || String(processingStatus?.state || "").toUpperCase() !== "RUNNING"}
-                      variant="destructive"
-                      className="w-full"
-                    >
-                      <Square className="mr-2 h-4 w-4" />
-                      Stop Processing
-                    </Button>
-                  </div>
-
-                  {/* Emergency Stop */}
-                  <div className="border-t border-border pt-4">
-                    <Button
-                      variant="destructive"
-                      className="w-full font-bold"
-                      onClick={handleEmergencyStop}
-                      disabled={isProcessingUpdating}
-                    >
-                      <ShieldAlert className="mr-2 h-4 w-4" />
-                      EMERGENCY STOP — ALL RED
-                    </Button>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Forces all lanes to RED immediately.
-                    </p>
-                  </div>
-                </CardContent>
-              </Card>
-            ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle>Processing Control</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-muted-foreground">Select an intersection to control processing.</p>
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Camera Source Manager Notice */}
+          {/* System logs + Camera Source Manager */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -492,9 +364,6 @@ export default function SystemMonitorPage() {
               </div>
             </CardContent>
           </Card>
-
-            
-          </div>
 
           {/* System Logs */}
             <Card>
@@ -536,7 +405,9 @@ export default function SystemMonitorPage() {
                 </div>
               </CardContent>
             </Card>
-        </div>
+          </div>
+
+          
       </main>
     </div>
   )

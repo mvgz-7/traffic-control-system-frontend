@@ -41,6 +41,7 @@ type HourlyTotal = {
 function getHourlyWindows(
   numHours: number
 ): { label: string; start: number; end: number }[] {
+  // Anchor windows to the current hour and return newest-first (current hour first)
   const now = new Date()
   const currentHourStart = new Date(
     now.getFullYear(),
@@ -52,21 +53,13 @@ function getHourlyWindows(
   )
   const windows: { label: string; start: number; end: number }[] = []
 
-  for (let i = numHours - 1; i >= 0; i--) {
+  // Build windows starting from current hour and moving backwards so the first
+  // element is the current hour (newest) as requested.
+  for (let i = 0; i < numHours; i++) {
     const start = new Date(currentHourStart.getTime() - i * 3600000)
     const end = new Date(start.getTime() + 3600000)
-    const label = `${start.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    })} – ${end.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    })}`
-    windows.push({
-      label,
-      start: start.getTime() / 1000,
-      end: end.getTime() / 1000,
-    })
+    const label = `${start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} – ${end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+    windows.push({ label, start: start.getTime() / 1000, end: end.getTime() / 1000 })
   }
 
   return windows

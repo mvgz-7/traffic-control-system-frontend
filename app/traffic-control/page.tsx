@@ -4,11 +4,11 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import useSWR from "swr"
 import { Sidebar } from "@/components/layout/sidebar"
 import { Header } from "@/components/layout/header"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { AlertCircle, BookOpen, CheckCircle2, ShieldAlert, Timer, Zap } from "lucide-react"
+import { AlertCircle, BookOpen, CheckCircle2, ShieldAlert, Timer, Zap, Play, Square } from "lucide-react"
 import { toast } from "sonner"
 import {
   listIntersections,
@@ -19,11 +19,15 @@ import {
   emergencyStop,
   forceGreen,
   getStatusStreamUrl,
+  getProcessingStatus,
+  startProcessing,
+  stopProcessing,
 } from "@/lib/api"
-import type { IntersectionSummary, IntersectionStatus, LaneConfig, LaneConfigUpdate, StatusMessage } from "@/lib/types"
+import type { IntersectionSummary, IntersectionStatus, LaneConfig, LaneConfigUpdate, StatusMessage, ProcessingStatus } from "@/lib/types"
 import { VideoFeedWebSocket } from "@/components/dashboard/video-feed"
 import { VehicleSummary } from "@/components/dashboard/vehicle-summary"
 import { IntersectionSelector } from "@/components/dashboard/intersection-selector"
+import SafetyViolationsCard from "@/components/dashboard/safety-violations"
 import ConfirmDialog from "@/components/ui/confirm-dialog"
 
 function NumberField({
@@ -321,6 +325,49 @@ export default function TrafficControlPage() {
   const [isFixedTimingActive, setIsFixedTimingActive] = useState(false)
   const [originalMaxGaps, setOriginalMaxGaps] = useState<Record<string, number>>({})
 
+  // Processing control state (moved from System Monitor)
+  const [isProcessingUpdatingLocal, setIsProcessingUpdatingLocal] = useState(false)
+  const { data: processingStatus } = useSWR<ProcessingStatus>(
+    selectedId ? [`processing`, selectedId] : null,
+    selectedId ? () => getProcessingStatus(selectedId) : null,
+    { refreshInterval: 2000 }
+  )
+
+  const handleStartProcessingLocal = async () => {
+    if (!selectedId) return
+    setIsProcessingUpdatingLocal(true)
+    try {
+      await startProcessing(selectedId)
+      toast.success("Processing started")
+    } catch (error) {
+      toast.error("Failed to start processing")
+      console.error(error)
+    } finally {
+      setIsProcessingUpdatingLocal(false)
+    }
+  }
+
+  const handleStopProcessingLocal = async () => {
+    if (!selectedId) return
+    setIsProcessingUpdatingLocal(true)
+    try {
+      await stopProcessing(selectedId)
+      toast.success("Processing stopped")
+    } catch (error) {
+      toast.error("Failed to stop processing")
+      console.error(error)
+    } finally {
+      setIsProcessingUpdatingLocal(false)
+    }
+  }
+
+  const formatUptime = (seconds: number) => {
+    const hrs = Math.floor(seconds / 3600)
+    const mins = Math.floor((seconds % 3600) / 60)
+    const secs = seconds % 60
+    return `${hrs.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
+  }
+
 
   const handleFixedTiming = async () => {
     if (!selectedId || laneIds.length === 0) return
@@ -512,6 +559,8 @@ export default function TrafficControlPage() {
                   </CardContent>
                 </Card>
 
+                
+
               {/* Lane Configuration */}
                 <Card>
                   <CardHeader>
@@ -686,6 +735,31 @@ export default function TrafficControlPage() {
                                   <span className="font-medium tabular-nums">{lane.vehicles_this_green}</span>
                                 </div>
                               )}
+                              {/* VAC Decision + Reason */}
+                              {lane.decision && (
+                                <div className="mt-10">
+                                  <div className="text-xs">VAC Decision: <span className="font-semibold">{lane.decision.action}</span></div>
+                                  {lane.decision.reason && (
+                                    <p className="mt-2 text-[11px] text-muted-foreground" title={lane.decision.reason}>
+                                      {(() => {
+                                        const reason = String(lane.decision.reason || "")
+                                        // Insert a line break after the word 'reached' (case-insensitive)
+                                        const parts = reason.split(/(reached)/i)
+                                        return parts.map((part, idx) =>
+                                          /reached/i.test(part) ? (
+                                            <span key={idx}>
+                                              {part}
+                                              <br />
+                                            </span>
+                                          ) : (
+                                            <span key={idx}>{part}</span>
+                                          )
+                                        )
+                                      })()}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
                         )
@@ -777,6 +851,62 @@ export default function TrafficControlPage() {
                 />
                 <VehicleSummary intersectionId={selectedId} />
               </div>
+
+              <div className="grid gap-6 lg:grid-cols-2">
+                  {/* Processing Control (moved here) */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Processing Control</CardTitle>
+                    <CardDescription>Start/stop video processing for this intersection</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="rounded-lg bg-muted p-4">
+                      <p className="text-sm text-muted-foreground mb-2">Status</p>
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`w-3 h-3 rounded-full ${
+                            String(processingStatus?.state || "").toUpperCase() === "RUNNING" ? "bg-green-500" : "bg-gray-500"
+                          }`}
+                        />
+                        <p className="font-semibold">{processingStatus?.state || "UNKNOWN"}</p>
+                      </div>
+                    </div>
+
+                    {processingStatus?.uptime_seconds != null ? (
+                      <div className="rounded-lg bg-muted p-4">
+                        <p className="text-sm text-muted-foreground mb-2">Uptime</p>
+                        <p className="font-semibold">{formatUptime(Math.floor(processingStatus.uptime_seconds))}</p>
+                      </div>
+                    ) : null}
+
+                    <div className="space-y-2 pt-4">
+                      <Button
+                        onClick={handleStartProcessingLocal}
+                        disabled={isProcessingUpdatingLocal || String(processingStatus?.state || "").toUpperCase() === "RUNNING"}
+                        className="w-full"
+                      >
+                        <Play className="mr-2 h-4 w-4" />
+                        Start Processing
+                      </Button>
+                      <Button
+                        onClick={handleStopProcessingLocal}
+                        disabled={isProcessingUpdatingLocal || String(processingStatus?.state || "").toUpperCase() !== "RUNNING"}
+                        variant="destructive"
+                        className="w-full"
+                      >
+                        <Square className="mr-2 h-4 w-4" />
+                        Stop Processing
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              {/* Safety violations panel */}
+          
+                <SafetyViolationsCard intersectionId={selectedId} />
+              
+
+              </div>
+              
             </>
           )}
         </div>

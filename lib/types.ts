@@ -275,3 +275,15 @@ export interface VehicleCountReport {
   total_records: number
   data: VehicleCountReportRecord[]
 }
+
+// ===== Safety violation record (from backend safety_violations table) =====
+export interface SafetyViolation {
+  id?: number
+  timestamp: number
+  intersection_id: string
+  violation_type: string
+  lanes_involved: string | string[] // backend stores JSON string; frontend may parse to array
+  prevented: boolean
+  details?: string | null
+  created_at?: string | number
+}

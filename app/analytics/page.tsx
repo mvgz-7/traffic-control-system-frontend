@@ -218,6 +218,7 @@ export default function AnalyticsPage() {
   const [hourlyByIntersection, setHourlyByIntersection] = useState<Record<string, HourlyTotal[]>>({})
   const [selectedId, setSelectedId] = useState("")
   const [timeRangeMinutes, setTimeRangeMinutes] = useState(1440) // default: last 24 hours
+  const [currentHourCounts, setCurrentHourCounts] = useState<Record<string, number>>({})
 
   const { data: intersections } = useSWR<IntersectionSummary[]>(
     "intersections",
@@ -322,6 +323,38 @@ export default function AnalyticsPage() {
     }
   }, [intersections, selectedId, numHours])
 
+  // Poll current hour counts every 5s so the current hour shows live values (won't stay 0)
+  useEffect(() => {
+    if (!selectedId) return
+    let cancelled = false
+
+    async function fetchCurrentHour() {
+      const now = new Date()
+      const currentHourStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0)
+      const startTs = Math.floor(currentHourStart.getTime() / 1000)
+      const endTs = Math.floor(Date.now() / 1000)
+
+      try {
+        const data = await getLineCounts(selectedId, startTs, endTs)
+        const { grandTotal } = parseLaneCounts(data?.counts)
+        if (!cancelled) {
+          setCurrentHourCounts((prev) => ({ ...prev, [selectedId]: grandTotal }))
+        }
+      } catch {
+        if (!cancelled) {
+          setCurrentHourCounts((prev) => ({ ...prev, [selectedId]: 0 }))
+        }
+      }
+    }
+
+    fetchCurrentHour()
+    const iv = setInterval(fetchCurrentHour, 5000)
+    return () => {
+      cancelled = true
+      clearInterval(iv)
+    }
+  }, [selectedId])
+
   const report = useMemo(
     () => ({
       generated_at: new Date().toISOString(),
@@ -423,7 +456,7 @@ export default function AnalyticsPage() {
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="overflow-x-auto">
+                      <div className="overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="border-b text-left">
@@ -432,12 +465,23 @@ export default function AnalyticsPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {rows.map((row) => (
-                            <tr key={row.hourStart} className="border-b last:border-0 hover:bg-muted/50">
-                              <td className="p-2 whitespace-nowrap text-xs">{row.hour}</td>
-                              <td className="p-2 text-right font-semibold tabular-nums">{row.total}</td>
-                            </tr>
-                          ))}
+                          {(() => {
+                            const now = new Date()
+                            const currentHourStart = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0).getTime() / 1000)
+                            const displayRows = (rows || []).map((row) => {
+                              if (row.hourStart === currentHourStart) {
+                                return { ...row, total: currentHourCounts[selectedId] ?? row.total }
+                              }
+                              return row
+                            })
+
+                            return displayRows.map((row) => (
+                              <tr key={row.hourStart} className="border-b last:border-0 hover:bg-muted/50">
+                                <td className="p-2 whitespace-nowrap text-xs">{row.hour}</td>
+                                <td className="p-2 text-right font-semibold tabular-nums">{row.total}</td>
+                              </tr>
+                            ))
+                          })()}
                           {rows.length === 0 && (
                             <tr>
                               <td colSpan={2} className="p-4 text-center text-muted-foreground text-xs">Loading...</td>

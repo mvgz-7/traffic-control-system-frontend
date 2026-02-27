@@ -27,7 +27,6 @@ import type { IntersectionSummary, IntersectionStatus, LaneConfig, LaneConfigUpd
 import { VideoFeedWebSocket } from "@/components/dashboard/video-feed"
 import { VehicleSummary } from "@/components/dashboard/vehicle-summary"
 import { IntersectionSelector } from "@/components/dashboard/intersection-selector"
-import SafetyViolationsCard from "@/components/dashboard/safety-violations"
 import ConfirmDialog from "@/components/ui/confirm-dialog"
 
 function NumberField({
@@ -845,39 +844,40 @@ export default function TrafficControlPage() {
               </div>
 
               {/* Live video feed + vehicle summary */}
-              <div className="grid gap-6 lg:grid-cols-2">
-                <VideoFeedWebSocket
-                  intersectionId={selectedId}
-                />
-                <VehicleSummary intersectionId={selectedId} />
-              </div>
+              <div className="grid gap-6 lg:grid-cols-2 items-stretch">
+                <div className="h-full">
+                  <VideoFeedWebSocket
+                    intersectionId={selectedId}
+                  />
+                </div>
 
-              <div className="grid gap-6 lg:grid-cols-2">
-                  {/* Processing Control (moved here) */}
-                <Card>
+                {/* Processing Control (moved here) */}
+                <Card className="h-full">
                   <CardHeader>
                     <CardTitle>Processing Control</CardTitle>
                     <CardDescription>Start/stop video processing for this intersection</CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="rounded-lg bg-muted p-4">
-                      <p className="text-sm text-muted-foreground mb-2">Status</p>
-                      <div className="flex items-center gap-2">
-                        <div
-                          className={`w-3 h-3 rounded-full ${
-                            String(processingStatus?.state || "").toUpperCase() === "RUNNING" ? "bg-green-500" : "bg-gray-500"
-                          }`}
-                        />
-                        <p className="font-semibold">{processingStatus?.state || "UNKNOWN"}</p>
-                      </div>
-                    </div>
-
-                    {processingStatus?.uptime_seconds != null ? (
+                  <CardContent className="space-y-4 h-full flex flex-col justify-between">
+                    <div>
                       <div className="rounded-lg bg-muted p-4">
-                        <p className="text-sm text-muted-foreground mb-2">Uptime</p>
-                        <p className="font-semibold">{formatUptime(Math.floor(processingStatus.uptime_seconds))}</p>
+                        <p className="text-sm text-muted-foreground mb-2">Status</p>
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={`w-3 h-3 rounded-full ${
+                              String(processingStatus?.state || "").toUpperCase() === "RUNNING" ? "bg-green-500" : "bg-gray-500"
+                            }`}
+                          />
+                          <p className="font-semibold">{processingStatus?.state || "UNKNOWN"}</p>
+                        </div>
                       </div>
-                    ) : null}
+
+                      {processingStatus?.uptime_seconds != null ? (
+                        <div className="rounded-lg bg-muted p-4 mt-4">
+                          <p className="text-sm text-muted-foreground mb-2">Uptime</p>
+                          <p className="font-semibold">{formatUptime(Math.floor(processingStatus.uptime_seconds))}</p>
+                        </div>
+                      ) : null}
+                    </div>
 
                     <div className="space-y-2 pt-4">
                       <Button
@@ -900,12 +900,9 @@ export default function TrafficControlPage() {
                     </div>
                   </CardContent>
                 </Card>
-              {/* Safety violations panel */}
-          
-                <SafetyViolationsCard intersectionId={selectedId} />
               
-
               </div>
+              <VehicleSummary intersectionId={selectedId} />
               
             </>
           )}

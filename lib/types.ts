@@ -158,6 +158,20 @@ export interface HealthAlert {
   timestamp: number
 }
 
+// ===== Traffic notification (from /notifications/active and /notifications/history) =====
+export interface TrafficNotification {
+  id: string
+  notification_type: string
+  severity: string
+  intersection_id: string
+  lane_id?: string | null
+  message: string
+  details?: Record<string, any>
+  timestamp: number
+  resolved: boolean
+  resolved_at?: number | null
+}
+
 export interface DecisionLogEntry {
   timestamp: number
   phase: string

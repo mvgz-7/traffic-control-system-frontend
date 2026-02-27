@@ -400,4 +400,35 @@ export async function updateModelConfig(update: ModelConfigUpdateRequest): Promi
   return response.json()
 }
 
+// ===== Notifications =====
+export async function getActiveNotifications(intersectionId?: string): Promise<any[]> {
+  const url = new URL(`${API_V1}/notifications/active`)
+  if (intersectionId) url.searchParams.set("intersection_id", intersectionId)
+  const response = await fetch(url.toString())
+  if (!response.ok) throw new Error("Failed to fetch active notifications")
+  const data = await response.json()
+  return data?.notifications || []
+}
+
+export async function getNotificationStatistics(): Promise<any> {
+  const response = await fetch(`${API_V1}/notifications/statistics`)
+  if (!response.ok) throw new Error("Failed to fetch notification statistics")
+  return response.json()
+}
+
+export async function resolveNotification(notificationId: string): Promise<any> {
+  const response = await fetch(`${API_V1}/notifications/${notificationId}/resolve`, {
+    method: "POST",
+  })
+  if (!response.ok) {
+    let detail = "Failed to resolve notification"
+    try {
+      const err = await response.json()
+      detail = err.detail || err.message || JSON.stringify(err)
+    } catch (_) {}
+    throw new Error(detail)
+  }
+  return response.json()
+}
+
 

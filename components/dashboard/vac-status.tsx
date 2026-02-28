@@ -17,7 +17,7 @@ function renderTrafficLight(state?: unknown) {
   const yellowOn = s === "YELLOW"
   const greenOn = s === "GREEN"
   return (
-    <div className="basis-[25%] py-4 gap-5 p-1.5 bg-gradient-to-b from-zinc-800 to-zinc-950 rounded-lg flex flex-col items-center justify-center shadow-inner border border-zinc-700/50 self-stretch">
+    <div className="basis-[25%] py-4 gap-5 p-1.5 bg-gradient-to-b from-zinc-800 to-zinc-950 rounded-2xl flex flex-col items-center justify-center shadow-inner border border-zinc-700/50 self-stretch">
       <div
         className={`w-10 h-10 rounded-full transition-all duration-300 ${redOn ? "bg-red-500 ring-[3px] ring-red-400/50" : "bg-zinc-700/60"}`}
         style={{ boxShadow: redOn ? "0 0 14px 2px rgba(239,68,68,0.5), inset 0 1px 2px rgba(255,255,255,0.15)" : "inset 0 1px 3px rgba(0,0,0,0.4)" }}
@@ -87,8 +87,8 @@ export function VACStatusDisplay({ intersectionId, liveStatus }: VACStatusDispla
   // State color helper
   function stateColor(state?: string) {
     const s = String(state ?? "").toUpperCase()
-    if (s === "GREEN") return { bg: "bg-green-500/10", border: "border-green-500/40", text: "text-green-600", badge: "bg-green-500" }
-    if (s === "YELLOW") return { bg: "bg-yellow-400/10", border: "border-yellow-400/40", text: "text-yellow-600", badge: "bg-yellow-400" }
+    if (s === "GREEN") return { bg: "bg-green-500/20", border: "border-green-600/60", text: "text-green-600", badge: "bg-green-500" }
+    if (s === "YELLOW") return { bg: "bg-yellow-500/20", border: "border-yellow-500/60", text: "text-yellow-600", badge: "bg-yellow-400" }
     return { bg: "bg-red-500/10", border: "border-red-500/30", text: "text-red-500", badge: "bg-red-500" }
   }
 
@@ -111,9 +111,9 @@ export function VACStatusDisplay({ intersectionId, liveStatus }: VACStatusDispla
               const colors = stateColor(lane.state)
               const stateUpper = String(lane.state ?? "").toUpperCase()
               return (
-                <div key={laneId} className={`rounded-xl border ${colors.border} ${colors.bg} p-4 transition-colors duration-300`}>
+                <div key={laneId} className={`rounded-xl border ${colors.border} ${colors.bg} p-7 transition-colors duration-300`}>
                   {/* Lane header */}
-                  <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center justify-between mb-5">
                     <span className="text-sm font-semibold text-foreground">{laneId}</span>
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider text-white ${colors.badge}`}>
                       {stateUpper || "—"}
@@ -123,35 +123,24 @@ export function VACStatusDisplay({ intersectionId, liveStatus }: VACStatusDispla
                   {/* Traffic light + metrics side by side */}
                   <div className="flex items-stretch gap-3">
                     {renderTrafficLight(lane.state)}
-                    <div className="flex-1 min-w-0 space-y-1.5">
-                      <div className="flex items-center justify-between rounded-md bg-background/60 px-2.5 py-1.5">
-                        <span className="text-xs text-muted-foreground">Countdown</span>
-                        <span className={`text-sm font-semibold tabular-nums ${stateUpper === "GREEN" && typeof lane.countdown === "number" && lane.countdown > 0 ? "text-green-500" : ""}`}>
+                    <div className="flex-1 min-w-0 flex flex-col justify-between ml-3">
+                      <div className="flex items-center justify-between rounded-md bg-background/100 px-2.5 py-2">
+                        <span className="text-sm font-medium">Countdown</span>
+                        <span className={`text-sm font-semibold tabular-nums ${stateUpper === "GREEN" && typeof lane.countdown === "number" && lane.countdown > 0 ? "text-green-600" : ""}`}>
                           {stateUpper === "GREEN" && typeof lane.countdown === "number" ? `${lane.countdown.toFixed(1)}s` : "-"}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between rounded-md bg-background/60 px-2.5 py-1.5">
-                        <span className="text-xs text-muted-foreground">Elapsed</span>
+                      <div className="flex items-center justify-between rounded-md bg-background/100 px-2.5 py-2">
+                        <span className="text-sm font-medium">Elapsed</span>
                         <span className="text-sm font-semibold tabular-nums">{formatSeconds(lane.elapsed, 1)}</span>
                       </div>
-                      <div className="flex items-center justify-between rounded-md bg-background/60 px-2.5 py-1.5">
-                        <span className="text-xs text-muted-foreground">No. of Extensions</span>
-                        <span className="text-sm font-semibold tabular-nums">
-                          {typeof lane.extensions_count === "number" ? lane.extensions_count : 0}
-                          {lane.just_extended && <span className="ml-1 text-green-500 font-bold text-xs">+{lane.extension_time ?? 5}s</span>}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between rounded-md bg-background/60 px-2.5 py-1.5">
-                        <span className="text-xs text-muted-foreground">Extension Time</span>
-                        <span className="text-sm font-semibold tabular-nums">{typeof lane.extension_time === "number" ? `${lane.extension_time}s` : "-"}</span>
-                      </div>
-                      <div className="flex items-center justify-between rounded-md bg-background/60 px-2.5 py-1.5">
-                        <span className="text-xs text-muted-foreground">Gap</span>
+                      <div className="flex items-center justify-between rounded-md bg-background/100 px-2.5 py-2">
+                        <span className="text-sm font-medium">Gap</span>
                         <span className="text-sm font-semibold tabular-nums">{formatSeconds(lane.gap, 2)}</span>
                       </div>
                       {typeof lane.vehicles_this_green === "number" && (
-                        <div className="flex items-center justify-between rounded-md bg-background/60 px-2.5 py-1.5">
-                          <span className="text-xs text-muted-foreground">Vehicles</span>
+                        <div className="flex items-center justify-between rounded-md bg-background/100 px-2.5 py-2">
+                          <span className="text-sm font-medium">Vehicles</span>
                           <span className="text-sm font-semibold tabular-nums">{lane.vehicles_this_green}</span>
                         </div>
                       )}

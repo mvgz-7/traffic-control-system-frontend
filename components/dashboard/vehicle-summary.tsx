@@ -1,13 +1,10 @@
 "use client"
 
-import { useState } from "react"
 import useSWR from "swr"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { toast } from "sonner"
-import { RotateCcw } from "lucide-react"
-import { getLineCounts, resetLineCounts, getProcessingStatus } from "@/lib/api"
+import { Car } from "lucide-react"
+import { getLineCounts, getProcessingStatus } from "@/lib/api"
 import type { ProcessingStatus } from "@/lib/types"
 
 interface VehicleSummaryProps {
@@ -29,8 +26,7 @@ const VEHICLE_CLASSES = [
 
 
 export function VehicleSummary({ intersectionId, liveLineCounts }: VehicleSummaryProps) {
-  const [isResetting, setIsResetting] = useState(false)
-  const { data, error, isLoading, mutate } = useSWR(
+  const { data, error, isLoading } = useSWR(
     intersectionId ? ["lineCounts", intersectionId] : null,
     () => getLineCounts(intersectionId),
     { refreshInterval: 3000, fallbackData: null }
@@ -43,19 +39,6 @@ export function VehicleSummary({ intersectionId, liveLineCounts }: VehicleSummar
   )
 
   const isProcessingRunning = processingStatus?.state?.toLowerCase() === "running"
-
-  const handleReset = async () => {
-    setIsResetting(true)
-    try {
-      await resetLineCounts(intersectionId)
-      toast.success("Line counts reset")
-      mutate()
-    } catch {
-      toast.error("Failed to reset line counts")
-    } finally {
-      setIsResetting(false)
-    }
-  }
 
   // Prefer live line counts pushed from the WebSocket when available
   const counts: Record<string, Record<string, number>> = (liveLineCounts as any) || (data?.counts || {})
@@ -74,11 +57,10 @@ export function VehicleSummary({ intersectionId, liveLineCounts }: VehicleSummar
   return (
     <Card className="h-full">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-        <CardTitle>Vehicle Summary</CardTitle>
-        <Button variant="outline" size="sm" onClick={handleReset} disabled={isResetting}>
-          <RotateCcw className={`mr-1 h-3 w-3 ${isResetting ? "animate-spin" : ""}`} />
-          Reset
-        </Button>
+        <CardTitle className="flex items-center gap-2">
+          <Car className="h-4 w-4 text-primary" />
+          Vehicle Summary
+        </CardTitle>
       </CardHeader>
       <CardContent>
         {error && <p className="text-sm text-destructive mb-3">Failed to load line counts</p>}

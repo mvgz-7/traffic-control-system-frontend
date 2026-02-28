@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Video } from "lucide-react"
 import { getVideoStreamUrl } from "@/lib/api"
 interface VideoFeedWebSocketProps {
   intersectionId: string
@@ -338,7 +339,7 @@ export function VideoFeedWebSocket({ intersectionId, onFrame }: VideoFeedWebSock
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center justify-between">
-          <span>CCTV Feed</span>
+          <span className="flex items-center gap-2"><Video className="h-4 w-4 text-primary" />CCTV Feed</span>
           <Badge variant={isConnected ? "success" : "destructive"} className="text-xs">
             {isConnected ? "Connected" : "Disconnected"}
           </Badge>

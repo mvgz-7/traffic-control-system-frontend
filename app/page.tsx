@@ -11,8 +11,8 @@ import { listIntersections } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Spinner } from "@/components/ui/spinner"
 import type { IntersectionSummary, IntersectionStatus } from "@/lib/types"
-import { CameraSourceManager } from "@/components/dashboard/camera-source-manager"
 import { VehicleSummary } from "@/components/dashboard/vehicle-summary"
+import { DetectionAccuracy } from "@/components/dashboard/detection-accuracy"
 
 export default function DashboardPage() {
   const [selectedIntersection, setSelectedIntersection] = useState<string>("")
@@ -113,10 +113,12 @@ export default function DashboardPage() {
                 <VACStatusDisplay intersectionId={selectedIntersection} liveStatus={liveVacStatus} />
               </div>
 
-              {/* Under VAC: 2 columns */}
-              <div className="grid gap-6 items-stretch">
+              <div className="grid gap-6 md:grid-cols-2 items-stretch">
                 <div className="h-full min-w-0">
                   <VehicleSummary intersectionId={selectedIntersection} liveLineCounts={liveLineCounts} />
+                </div>
+                <div className="h-full min-w-0">
+                  <DetectionAccuracy intersectionId={selectedIntersection} />
                 </div>
               </div>
             </>

@@ -8,7 +8,7 @@ import useSWR from "swr"
 import { LayoutDashboard, BarChart3, TrafficCone, Monitor, Bell, Settings, Menu, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { getHealthAlerts, listIntersections, getDecisionLog } from "@/lib/api"
+import { getHealthAlerts, listIntersections, getActiveNotifications } from "@/lib/api"
 
 const navigation = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
@@ -23,18 +23,21 @@ export const Sidebar = memo(function Sidebar() {
   const pathname = usePathname()
   const [mobileOpen, setMobileOpen] = useState(false)
 
-  // notification counts (health alerts + recent decisions for first intersection)
+  // notification counts (health alerts + active traffic notifications)
   const { data: alerts } = useSWR("health-alerts", getHealthAlerts, { refreshInterval: 5000 })
   const { data: intersections } = useSWR("intersections", listIntersections, { refreshInterval: 15000 })
   const activeIntersectionId = intersections?.[0]?.id
-  const { data: decisionLog } = useSWR(activeIntersectionId ? ["decision-log", activeIntersectionId] : null, activeIntersectionId ? () => getDecisionLog(activeIntersectionId, 25) : null, { refreshInterval: 5000 })
+  const { data: activeNotifications } = useSWR(
+    activeIntersectionId ? ["active-notifs-sidebar", activeIntersectionId] : "active-notifs-sidebar",
+    () => getActiveNotifications(activeIntersectionId || undefined),
+    { refreshInterval: 5000 }
+  )
 
   const notificationCount = useMemo(() => {
     const alertCount = alerts?.length ?? 0
-    const nowSeconds = Date.now() / 1000
-    const recentDecisionCount = (decisionLog ?? []).filter((d) => typeof d.timestamp === "number" && d.timestamp >= nowSeconds - 300).length
-    return alertCount + recentDecisionCount
-  }, [alerts, decisionLog])
+    const notifCount = activeNotifications?.length ?? 0
+    return alertCount + notifCount
+  }, [alerts, activeNotifications])
 
   const badgeText = notificationCount > 99 ? "99+" : String(notificationCount)
 

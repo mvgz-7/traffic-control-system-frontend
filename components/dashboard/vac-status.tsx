@@ -17,17 +17,17 @@ function renderTrafficLight(state?: unknown) {
   const yellowOn = s === "YELLOW"
   const greenOn = s === "GREEN"
   return (
-    <div className="w-12 p-1.5 bg-gradient-to-b from-zinc-800 to-zinc-950 rounded-lg flex flex-col items-center gap-1.5 shadow-inner border border-zinc-700/50">
+    <div className="basis-[25%] py-4 gap-5 p-1.5 bg-gradient-to-b from-zinc-800 to-zinc-950 rounded-lg flex flex-col items-center justify-center shadow-inner border border-zinc-700/50 self-stretch">
       <div
-        className={`w-7 h-7 rounded-full transition-all duration-300 ${redOn ? "bg-red-500 ring-[3px] ring-red-400/50" : "bg-zinc-700/60"}`}
+        className={`w-10 h-10 rounded-full transition-all duration-300 ${redOn ? "bg-red-500 ring-[3px] ring-red-400/50" : "bg-zinc-700/60"}`}
         style={{ boxShadow: redOn ? "0 0 14px 2px rgba(239,68,68,0.5), inset 0 1px 2px rgba(255,255,255,0.15)" : "inset 0 1px 3px rgba(0,0,0,0.4)" }}
       />
       <div
-        className={`w-7 h-7 rounded-full transition-all duration-300 ${yellowOn ? "bg-yellow-400 ring-[3px] ring-yellow-300/50" : "bg-zinc-700/60"}`}
+        className={`w-10 h-10 rounded-full transition-all duration-300 ${yellowOn ? "bg-yellow-400 ring-[3px] ring-yellow-300/50" : "bg-zinc-700/60"}`}
         style={{ boxShadow: yellowOn ? "0 0 14px 2px rgba(234,179,8,0.4), inset 0 1px 2px rgba(255,255,255,0.15)" : "inset 0 1px 3px rgba(0,0,0,0.4)" }}
       />
       <div
-        className={`w-7 h-7 rounded-full transition-all duration-300 ${greenOn ? "bg-green-500 ring-[3px] ring-green-300/50" : "bg-zinc-700/60"}`}
+        className={`w-10 h-10 rounded-full transition-all duration-300 ${greenOn ? "bg-green-500 ring-[3px] ring-green-300/50" : "bg-zinc-700/60"}`}
         style={{ boxShadow: greenOn ? "0 0 14px 2px rgba(34,197,94,0.4), inset 0 1px 2px rgba(255,255,255,0.15)" : "inset 0 1px 3px rgba(0,0,0,0.4)" }}
       />
     </div>
@@ -121,12 +121,29 @@ export function VACStatusDisplay({ intersectionId, liveStatus }: VACStatusDispla
                   </div>
 
                   {/* Traffic light + metrics side by side */}
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-stretch gap-3">
                     {renderTrafficLight(lane.state)}
-                    <div className="flex-1 space-y-2">
+                    <div className="flex-1 min-w-0 space-y-1.5">
+                      <div className="flex items-center justify-between rounded-md bg-background/60 px-2.5 py-1.5">
+                        <span className="text-xs text-muted-foreground">Countdown</span>
+                        <span className={`text-sm font-semibold tabular-nums ${stateUpper === "GREEN" && typeof lane.countdown === "number" && lane.countdown > 0 ? "text-green-500" : ""}`}>
+                          {stateUpper === "GREEN" && typeof lane.countdown === "number" ? `${lane.countdown.toFixed(1)}s` : "-"}
+                        </span>
+                      </div>
                       <div className="flex items-center justify-between rounded-md bg-background/60 px-2.5 py-1.5">
                         <span className="text-xs text-muted-foreground">Elapsed</span>
                         <span className="text-sm font-semibold tabular-nums">{formatSeconds(lane.elapsed, 1)}</span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-md bg-background/60 px-2.5 py-1.5">
+                        <span className="text-xs text-muted-foreground">No. of Extensions</span>
+                        <span className="text-sm font-semibold tabular-nums">
+                          {typeof lane.extensions_count === "number" ? lane.extensions_count : 0}
+                          {lane.just_extended && <span className="ml-1 text-green-500 font-bold text-xs">+{lane.extension_time ?? 5}s</span>}
+                        </span>
+                      </div>
+                      <div className="flex items-center justify-between rounded-md bg-background/60 px-2.5 py-1.5">
+                        <span className="text-xs text-muted-foreground">Extension Time</span>
+                        <span className="text-sm font-semibold tabular-nums">{typeof lane.extension_time === "number" ? `${lane.extension_time}s` : "-"}</span>
                       </div>
                       <div className="flex items-center justify-between rounded-md bg-background/60 px-2.5 py-1.5">
                         <span className="text-xs text-muted-foreground">Gap</span>

@@ -98,6 +98,7 @@ export default function TrafficControlPage() {
     max_gap: 3.0,
     min_green: 15.0,
     max_green: 60.0,
+    extension_time: 5.0,
     yellow_time: 3.0,
     all_red_time: 2.0,
   })
@@ -195,6 +196,7 @@ export default function TrafficControlPage() {
         max_gap: laneConfig.max_gap,
         min_green: laneConfig.min_green,
         max_green: laneConfig.max_green,
+        extension_time: laneConfig.extension_time,
         yellow_time: laneConfig.yellow_time,
         all_red_time: laneConfig.all_red_time,
       })
@@ -628,6 +630,17 @@ export default function TrafficControlPage() {
                           />
 
                           <NumberField
+                            label="Extension Time (seconds)"
+                            value={formData.extension_time}
+                            min={1}
+                            max={30}
+                            step={0.5}
+                            field="extension_time"
+                            disabled={isUpdating}
+                            onChange={handleInputChange}
+                          />
+
+                          <NumberField
                             label="Yellow Time (seconds)"
                             value={formData.yellow_time}
                             min={1}
@@ -721,8 +734,25 @@ export default function TrafficControlPage() {
                             </Badge>
                             <div className="w-full space-y-1.5 text-xs">
                               <div className="flex justify-between">
+                                <span className="text-muted-foreground">Countdown</span>
+                                <span className={`font-medium tabular-nums ${stateUpper === "GREEN" && typeof lane.countdown === "number" && lane.countdown > 0 ? "text-green-600" : ""}`}>
+                                  {stateUpper === "GREEN" && typeof lane.countdown === "number" ? `${lane.countdown.toFixed(1)}s` : "-"}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
                                 <span className="text-muted-foreground">Elapsed</span>
                                 <span className="font-medium tabular-nums">{typeof lane.elapsed === "number" ? `${lane.elapsed.toFixed(1)}s` : "-"}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">No. of Extensions</span>
+                                <span className="font-medium tabular-nums">
+                                  {typeof lane.extensions_count === "number" ? lane.extensions_count : 0}
+                                  {lane.just_extended && <span className="ml-1 text-green-500 font-bold">+{lane.extension_time ?? 5}s</span>}
+                                </span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-muted-foreground">Extension Time</span>
+                                <span className="font-medium tabular-nums">{typeof lane.extension_time === "number" ? `${lane.extension_time}s` : "-"}</span>
                               </div>
                               <div className="flex justify-between">
                                 <span className="text-muted-foreground">Gap</span>
@@ -810,6 +840,9 @@ export default function TrafficControlPage() {
                           </div>
                           <div>
                             <span className="font-medium text-foreground">Yellow Time</span> — Duration of the yellow light phase between green and red.
+                          </div>
+                          <div>
+                            <span className="font-medium text-foreground">Extension Time</span> — Additional time added to the green phase when a vehicle is detected during the green interval, allowing the vehicle to safely pass through the intersection.
                           </div>
                           <div>
                             <span className="font-medium text-foreground">All Red Time</span> — Safety clearance interval where all lights are red.

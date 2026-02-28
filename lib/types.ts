@@ -10,6 +10,10 @@ export interface LaneStatus {
   state: TrafficLightState
   elapsed: number
   gap?: number | null
+  countdown: number
+  extensions_count: number
+  just_extended: boolean
+  extension_time: number
   min_green: number
   max_green: number
   max_gap: number
@@ -33,6 +37,7 @@ export interface LaneConfig {
   max_gap: number
   min_green: number
   max_green: number
+  extension_time: number
   yellow_time: number
   all_red_time: number
 }
@@ -42,6 +47,7 @@ export interface LaneConfigUpdate {
   max_gap?: number
   min_green?: number
   max_green?: number
+  extension_time?: number
   yellow_time?: number
   all_red_time?: number
 }

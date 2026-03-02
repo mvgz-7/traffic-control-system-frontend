@@ -336,45 +336,6 @@ export async function getVehicleCountReport(
   return response.json()
 }
 
-// ===== Safety violations (optional endpoint; backend may not expose this route) =====
-export async function getSafetyViolations(
-  intersectionId: string,
-  start?: number,
-  limit: number = 100
-): Promise<import("./types").SafetyViolation[]> {
-  try {
-    const url = new URL(`${API_V1}/intersections/${intersectionId}/safety-violations`)
-    if (start != null) url.searchParams.set("start", String(start))
-    url.searchParams.set("limit", String(limit))
-    const response = await fetch(url.toString())
-    if (!response.ok) {
-      // If endpoint missing or backend returns 404, degrade gracefully
-      return []
-    }
-    const data = await response.json()
-    // Backend returns list of rows; ensure lanes_involved parsed to array when possible
-    return (data || []).map((r: any) => ({
-      id: r.id,
-      timestamp: r.timestamp,
-      intersection_id: r.intersection_id,
-      violation_type: r.violation_type,
-      lanes_involved: (() => {
-        try {
-          const p = JSON.parse(r.lanes_involved)
-          return Array.isArray(p) ? p : r.lanes_involved
-        } catch {
-          return r.lanes_involved
-        }
-      })(),
-      prevented: Boolean(r.prevented),
-      details: r.details,
-      created_at: r.created_at,
-    }))
-  } catch (e) {
-    return []
-  }
-}
-
 // ===== Model config endpoints =====
 
 export async function getModelConfig(): Promise<ModelConfig> {

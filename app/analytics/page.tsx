@@ -101,7 +101,7 @@ function downloadPdf(
   // ─── Page 1: Title + Hourly Table (single intersection) ───
   doc.setFontSize(16)
   doc.setFont("helvetica", "bold")
-  doc.text(`Traffic Analytics Report — ${displayName} Intersection`, pageW / 2, margin + 4, { align: "center" })
+  doc.text(`Traffic Analytics Report — ${displayName}`, pageW / 2, margin + 4, { align: "center" })
   doc.setFontSize(10)
   doc.setFont("helvetica", "normal")
   doc.text(dateStr, pageW / 2, margin + 10, { align: "center" })
@@ -219,6 +219,8 @@ export default function AnalyticsPage() {
   const [selectedId, setSelectedId] = useState("")
   const [timeRangeMinutes, setTimeRangeMinutes] = useState(1440) // default: last 24 hours
   const [currentHourCounts, setCurrentHourCounts] = useState<Record<string, number>>({})
+  const [selectedDate, setSelectedDate] = useState<string>("")
+  const [customRange, setCustomRange] = useState<{ start: number; end: number } | null>(null)
 
   const { data: intersections } = useSWR<IntersectionSummary[]>(
     "intersections",
@@ -234,11 +236,18 @@ export default function AnalyticsPage() {
     if (!ix) return
 
     async function fetchCounts() {
-      const now = Math.floor(Date.now() / 1000)
-      const start = now - timeRangeMinutes * 60
+      let start: number, end: number
+      if (customRange) {
+        start = customRange.start
+        end = customRange.end
+      } else {
+        const now = Math.floor(Date.now() / 1000)
+        start = now - timeRangeMinutes * 60
+        end = now
+      }
 
       try {
-        const data = await getLineCounts(ix!.id, start, now)
+        const data = await getLineCounts(ix!.id, start, end)
         const { byLane, grandTotal, grandClasses } = parseLaneCounts(data?.counts)
         if (!cancelled) {
           setCountsData((prev) => ({
@@ -263,13 +272,13 @@ export default function AnalyticsPage() {
     }
 
     fetchCounts()
-    const interval = setInterval(fetchCounts, timeRangeMinutes < 60 ? 5000 : 15000)
+    const interval = setInterval(fetchCounts, !customRange && timeRangeMinutes < 60 ? 5000 : 15000)
 
     return () => {
       cancelled = true
       clearInterval(interval)
     }
-  }, [intersections, selectedId, timeRangeMinutes])
+  }, [intersections, selectedId, timeRangeMinutes, customRange])
 
   // Fetch hourly totals for the SELECTED intersection
   const numHours = Math.max(1, Math.ceil(timeRangeMinutes / 60))
@@ -281,10 +290,20 @@ export default function AnalyticsPage() {
 
     async function fetchHourly() {
       const now = new Date()
-      const currentHourStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0)
-      const startTs = currentHourStart.getTime() / 1000 - (numHours - 1) * 3600
-      const endTs = currentHourStart.getTime() / 1000 + 3600
-      const windows = getHourlyWindows(numHours)
+      let startTs: number, endTs: number, hours: number
+
+      if (customRange) {
+        startTs = customRange.start
+        endTs = customRange.end
+        hours = Math.max(1, Math.ceil((endTs - startTs) / 3600))
+      } else {
+        const currentHourStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0)
+        startTs = currentHourStart.getTime() / 1000 - (numHours - 1) * 3600
+        endTs = currentHourStart.getTime() / 1000 + 3600
+        hours = numHours
+      }
+
+      const windows = getHourlyWindows(hours)
 
       try {
         const report = await getVehicleCountReport(ix!.id, startTs, endTs, "hour")
@@ -304,7 +323,7 @@ export default function AnalyticsPage() {
           setHourlyByIntersection((prev) => ({ ...prev, [ix!.id]: rows }))
         }
       } catch {
-        const windows2 = getHourlyWindows(numHours)
+        const windows2 = getHourlyWindows(hours)
         if (!cancelled) {
           setHourlyByIntersection((prev) => ({
             ...prev,
@@ -321,7 +340,7 @@ export default function AnalyticsPage() {
       cancelled = true
       clearInterval(interval)
     }
-  }, [intersections, selectedId, numHours])
+  }, [intersections, selectedId, numHours, customRange])
 
   // Poll current hour counts every 5s so the current hour shows live values (won't stay 0)
   useEffect(() => {
@@ -429,6 +448,47 @@ export default function AnalyticsPage() {
                       {opt.label}
                     </Button>
                   ))}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Custom Date Selector (single date, no time) */}
+          {intersectionList.length > 0 && (
+            <Card>
+              <CardContent className="py-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <span className="text-sm font-semibold text-foreground whitespace-nowrap">Select Date:</span>
+                  <input
+                    type="date"
+                    value={selectedDate}
+                    onChange={(e) => setSelectedDate(e.target.value)}
+                    className="text-sm p-2 border rounded"
+                  />
+                  <Button size="sm" onClick={() => {
+                    if (!selectedDate) {
+                      alert('Please select a date')
+                      return
+                    }
+                    const parts = selectedDate.split('-').map((v) => Number(v))
+                    if (parts.length !== 3 || parts.some(isNaN)) {
+                      alert('Invalid date')
+                      return
+                    }
+                    const [y, m, d] = parts
+                    // Use local timezone: construct with year, monthIndex, day
+                    const startDt = new Date(y, m - 1, d, 0, 0, 0)
+                    const endDt = new Date(y, m - 1, d, 23, 59, 59)
+                    const s = Math.floor(startDt.getTime() / 1000)
+                    const e = Math.floor(endDt.getTime() / 1000)
+                    setCustomRange({ start: s, end: e })
+                    setTimeRangeMinutes(1440)
+                  }}>Apply</Button>
+                  <Button size="sm" variant="outline" onClick={() => {
+                    setCustomRange(null)
+                    setSelectedDate("")
+                    setTimeRangeMinutes(1440)
+                  }}>Clear</Button>
                 </div>
               </CardContent>
             </Card>

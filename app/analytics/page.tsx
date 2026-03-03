@@ -79,13 +79,15 @@ function downloadPdf(
   filename: string,
   hourlyData: Record<string, HourlyTotal[]>,
   counts: IntersectionCounts,
-  timeRangeMinutes: number
+  timeRangeMinutes: number,
+  selectedDate?: Date
 ) {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" })
   const pageW = doc.internal.pageSize.getWidth()
   const pageH = doc.internal.pageSize.getHeight()
   const margin = 10
-  const dateStr = new Date().toLocaleDateString(undefined, {
+  const displayDate = selectedDate || new Date()
+  const dateStr = displayDate.toLocaleDateString(undefined, {
     weekday: "long",
     year: "numeric",
     month: "long",
@@ -137,7 +139,7 @@ function downloadPdf(
   doc.addPage()
   doc.setFontSize(16)
   doc.setFont("helvetica", "bold")
-  doc.text(`Vehicle Classification — ${displayName} Intersection`, pageW / 2, margin + 4, { align: "center" })
+  doc.text(`Vehicle Classification — ${displayName}`, pageW / 2, margin + 4, { align: "center" })
   doc.setFontSize(10)
   doc.setFont("helvetica", "normal")
   const rangeEnd = new Date()
@@ -290,20 +292,38 @@ export default function AnalyticsPage() {
 
     async function fetchHourly() {
       const now = new Date()
-      let startTs: number, endTs: number, hours: number
+      let startTs: number, endTs: number
+      let windows: { label: string; start: number; end: number }[]
 
       if (customRange) {
+        // For custom date, show all 24 hours of that day
         startTs = customRange.start
         endTs = customRange.end
-        hours = Math.max(1, Math.ceil((endTs - startTs) / 3600))
+        
+        // Generate windows for all 24 hours of the selected day
+        const selectedDayDate = new Date(customRange.start * 1000)
+        const midnightDate = new Date(
+          selectedDayDate.getFullYear(),
+          selectedDayDate.getMonth(),
+          selectedDayDate.getDate(),
+          0,
+          0,
+          0
+        )
+        windows = []
+        for (let i = 0; i < 24; i++) {
+          const start = new Date(midnightDate.getTime() + i * 3600000)
+          const end = new Date(start.getTime() + 3600000)
+          const label = `${start.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} – ${end.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+          windows.push({ label, start: start.getTime() / 1000, end: end.getTime() / 1000 })
+        }
       } else {
+        // For recent hours, use the standard logic
         const currentHourStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0)
         startTs = currentHourStart.getTime() / 1000 - (numHours - 1) * 3600
         endTs = currentHourStart.getTime() / 1000 + 3600
-        hours = numHours
+        windows = getHourlyWindows(numHours)
       }
-
-      const windows = getHourlyWindows(hours)
 
       try {
         const report = await getVehicleCountReport(ix!.id, startTs, endTs, "hour")
@@ -323,11 +343,10 @@ export default function AnalyticsPage() {
           setHourlyByIntersection((prev) => ({ ...prev, [ix!.id]: rows }))
         }
       } catch {
-        const windows2 = getHourlyWindows(hours)
         if (!cancelled) {
           setHourlyByIntersection((prev) => ({
             ...prev,
-            [ix!.id]: windows2.map((w) => ({ hour: w.label, hourStart: w.start, total: 0 })),
+            [ix!.id]: windows.map((w) => ({ hour: w.label, hourStart: w.start, total: 0 })),
           }))
         }
       }
@@ -407,7 +426,8 @@ export default function AnalyticsPage() {
                 const ts = new Date().toISOString().replace(/[:.]/g, "-")
                 const selected = countsData[selectedId]
                 if (selected) {
-                  downloadPdf(`traffic_analytics_${selectedId}_${ts}.pdf`, hourlyByIntersection, selected, timeRangeMinutes)
+                  const selectedDate = customRange ? new Date(customRange.start * 1000) : undefined
+                  downloadPdf(`traffic_analytics_${selectedId}_${ts}.pdf`, hourlyByIntersection, selected, timeRangeMinutes, selectedDate)
                 }
               }}
               disabled={!selectedId || !countsData[selectedId]}
@@ -498,7 +518,7 @@ export default function AnalyticsPage() {
           {intersectionList.length > 0 && selectedId && (() => {
             let rows = hourlyByIntersection[selectedId] || []
             // For short intervals (<= 60 minutes) show a live single-row total
-            if (timeRangeMinutes <= 60) {
+            if (timeRangeMinutes <= 60 && !customRange) {
               const total = countsData[selectedId]?.total ?? 0
               const label = timeRangeMinutes === 5 ? "Last 5 minutes" : timeRangeMinutes === 30 ? "Last 30 minutes" : `Last ${timeRangeMinutes} minutes`
               rows = [{ hour: label, hourStart: Math.floor(Date.now() / 1000), total }]
@@ -506,6 +526,17 @@ export default function AnalyticsPage() {
             const grandTotal = rows.reduce((sum, r) => sum + r.total, 0)
             const selectedIx = intersectionList.find((ix) => ix.id === selectedId)
             const counts = countsData[selectedId]
+            
+            // Determine which date to display
+            const displayDate = customRange 
+              ? new Date(customRange.start * 1000)
+              : new Date()
+            const dateStr = displayDate.toLocaleDateString(undefined, { 
+              weekday: "long", 
+              year: "numeric", 
+              month: "long", 
+              day: "numeric" 
+            })
 
             return (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
@@ -514,7 +545,7 @@ export default function AnalyticsPage() {
                     <div className="flex items-center justify-between">
                       <div>
                         <CardTitle className="capitalize">{selectedIx?.name ?? selectedId}</CardTitle>
-                        <p className="text-sm text-muted-foreground mt-1">{new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</p>
+                        <p className="text-sm text-muted-foreground mt-1">{dateStr}</p>
                       </div>
                       <span className="text-sm font-semibold tabular-nums">
                         Total: {grandTotal}
@@ -535,7 +566,7 @@ export default function AnalyticsPage() {
                             const now = new Date()
                             const currentHourStart = Math.floor(new Date(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), 0, 0).getTime() / 1000)
                             const displayRows = (rows || []).map((row) => {
-                              if (row.hourStart === currentHourStart) {
+                              if (row.hourStart === currentHourStart && !customRange) {
                                 return { ...row, total: currentHourCounts[selectedId] ?? row.total }
                               }
                               return row
@@ -568,7 +599,7 @@ export default function AnalyticsPage() {
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <CardTitle>Vehicle Classification</CardTitle>
-                        <p className="text-sm text-muted-foreground mt-1">{new Date().toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" })}</p>
+                        <p className="text-sm text-muted-foreground mt-1">{dateStr}</p>
                       </div>
                       <span className="text-sm font-semibold tabular-nums">
                         Total: {counts?.total ?? 0}
